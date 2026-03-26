@@ -10,6 +10,11 @@ data class RegisterRequest(
     val role: Role
 )
 
+data class RegisterResponse(
+    val message: String,
+    val success: Boolean = true,
+)
+
 data class LoginRequest(
     val phoneNumber: String,
     val password: String
@@ -24,9 +29,13 @@ data class ForgotPasswordRequest(
     val email: String
 )
 
+data class VerifyEmailRequest(
+    val email: String,
+    val otp: String
+)
+
 data class ResetPasswordRequest(
-    val phoneNumber: String,
-    val otp: String,
+    val email: String,
     val newPassword: String
 )
 
@@ -37,4 +46,9 @@ data class ErrorResponse(
 
 data class RefreshTokenRequest(
     val refreshToken: String
+)
+
+data class MessageResponse(
+    val message: String,
+    val success: Boolean = true
 )

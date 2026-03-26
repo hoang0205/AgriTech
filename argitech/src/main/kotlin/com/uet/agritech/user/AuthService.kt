@@ -2,7 +2,6 @@ package com.uet.agritech.user
 
 import com.uet.agritech.security.JwtService
 import com.uet.agritech.user.dto.*
-import io.jsonwebtoken.Jwts
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import java.util.*
@@ -15,9 +14,13 @@ class AuthService(
     private val emailService: EmailService
 ) {
 
-    fun register(request: RegisterRequest): String {
+    fun register(request: RegisterRequest): RegisterResponse {
         if (userRepository.findByPhoneNumber(request.phoneNumber).isPresent) {
             throw java.lang.RuntimeException("Số điện thoại đã tồn tại!")
+        }
+
+        if (userRepository.findByEmail(request.email).isPresent) {
+            throw RuntimeException("Email này đã được sử dụng bởi tài khoản khác!")
         }
 
         val user = User(
@@ -28,7 +31,7 @@ class AuthService(
             role = request.role
         )
         userRepository.save(user)
-        return "Đăng ký thành công!"
+        return RegisterResponse("Đăng kí tài khoản thành công")
     }
 
     fun login(request: LoginRequest): LoginResponse {
@@ -47,8 +50,8 @@ class AuthService(
         )
     }
 
-    fun requestPasswordReset(request: ForgotPasswordRequest): String {
-        val user = userRepository.findByPhoneNumber(request.email)
+    fun requestPasswordReset(request: ForgotPasswordRequest): MessageResponse {
+        val user = userRepository.findByEmail(request.email)
             .orElseThrow { RuntimeException("Email không tồn tại!") }
 
         val otp = String.format("%06d", Random().nextInt(999999))
@@ -58,12 +61,12 @@ class AuthService(
         userRepository.save(user)
         emailService.sendOtpEmail(user.email, otp)
 
-        return "Mã OTP đã được gửi!"
+        return MessageResponse("Mã OTP đã được gửi đến email của bạn!")
     }
 
-    fun resetPassword(request: ResetPasswordRequest): String {
-        val user = userRepository.findByPhoneNumber(request.phoneNumber)
-            .orElseThrow { RuntimeException("Số điện thoại không tồn tại!") }
+    fun verifyEmail(request: VerifyEmailRequest): MessageResponse {
+        val user = userRepository.findByEmail(request.email)
+            .orElseThrow { RuntimeException("Email không tồn tại!") }
 
         if (user.resetOtp != request.otp) {
             throw RuntimeException("OTP không hợp lệ!")
@@ -72,12 +75,19 @@ class AuthService(
             throw RuntimeException("OTP đã hết hạn!")
         }
 
+        return MessageResponse("Xác thực email thành công")
+    }
+
+    fun resetPassword(request: ResetPasswordRequest): MessageResponse {
+        val user = userRepository.findByEmail(request.email)
+            .orElseThrow { RuntimeException("Email không tồn tại!") }
+
         user.password = passwordEncoder.encode(request.newPassword).toString()
         user.resetOtp = null
         user.otpExpiryTime = null
         userRepository.save(user)
 
-        return "Đổi mật khẩu thành công!"
+        return MessageResponse("Đổi mật khẩu thành công!")
     }
 
     fun refreshAccessToken(request: RefreshTokenRequest): LoginResponse {

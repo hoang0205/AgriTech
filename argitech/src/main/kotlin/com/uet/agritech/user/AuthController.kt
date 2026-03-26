@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*
 class AuthController(private val authService: AuthService) {
 
     @PostMapping("/register")
-    fun register(@RequestBody request: RegisterRequest): ResponseEntity<String> {
+    fun register(@RequestBody request: RegisterRequest): ResponseEntity<RegisterResponse> {
         return ResponseEntity.ok(authService.register(request))
     }
 
@@ -19,12 +19,17 @@ class AuthController(private val authService: AuthService) {
     }
 
     @PostMapping("/forgot-password")
-    fun forgotPassword(@RequestBody request: ForgotPasswordRequest): ResponseEntity<String> {
+    fun forgotPassword(@RequestBody request: ForgotPasswordRequest): ResponseEntity<MessageResponse> {
         return ResponseEntity.ok(authService.requestPasswordReset(request))
     }
 
+    @PostMapping("/verify-email")
+    fun verifyEmail(@RequestBody request: VerifyEmailRequest): ResponseEntity<MessageResponse> {
+        return ResponseEntity.ok(authService.verifyEmail(request))
+    }
+
     @PostMapping("/reset-password")
-    fun resetPassword(@RequestBody request: ResetPasswordRequest): ResponseEntity<String> {
+    fun resetPassword(@RequestBody request: ResetPasswordRequest): ResponseEntity<MessageResponse> {
         return ResponseEntity.ok(authService.resetPassword(request))
     }
 
