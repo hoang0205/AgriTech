@@ -27,7 +27,7 @@ class CloudinaryService(
         try {
             val uploadResult = cloudinary.uploader().upload(file.bytes, ObjectUtils.emptyMap())
 
-            return uploadResult["url"].toString()
+            return uploadResult["secure_url"].toString()
         } catch (e: IOException) {
             throw RuntimeException("Lỗi khi upload ảnh: ${e.message}")
         }

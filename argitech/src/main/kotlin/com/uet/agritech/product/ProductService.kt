@@ -29,7 +29,7 @@ class ProductService(
             quantity = request.quantity,
             unit = request.unit,
             description = request.description,
-            imageUrl = request.imageUrl,
+            imageUrls = request.imageUrls,
             farmer = farmer
         )
 
@@ -43,7 +43,7 @@ class ProductService(
             quantity = savedProduct.quantity,
             unit = savedProduct.unit,
             description = savedProduct.description,
-            imageUrl = savedProduct.imageUrl,
+            imageUrls = request.imageUrls,
             farmerName = farmer.fullName
         )
     }
@@ -62,7 +62,7 @@ class ProductService(
                 quantity = product.quantity,
                 unit = product.unit,
                 description = product.description,
-                imageUrl = product.imageUrl,
+                imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName
             )
         }
@@ -80,7 +80,7 @@ class ProductService(
                 quantity = product.quantity,
                 unit = product.unit,
                 description = product.description,
-                imageUrl = product.imageUrl,
+                imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName
             )
         }
@@ -100,7 +100,7 @@ class ProductService(
                 quantity = product.quantity,
                 unit = product.unit,
                 description = product.description,
-                imageUrl = product.imageUrl,
+                imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName
             )
         }
@@ -120,7 +120,7 @@ class ProductService(
                 quantity = product.quantity,
                 unit = product.unit,
                 description = product.description,
-                imageUrl = product.imageUrl,
+                imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName
             )
         }
@@ -142,7 +142,7 @@ class ProductService(
             quantity = product.quantity,
             unit = product.unit,
             description = product.description,
-            imageUrl = product.imageUrl,
+            imageUrls = product.imageUrls,
             farmerName = product.farmer.fullName
         )
     }

@@ -7,7 +7,7 @@ data class ProductRequest(
     val quantity: Double,
     val unit: String,
     val description: String,
-    val imageUrl: String? = null
+    val imageUrls: MutableList<String>
 )
 
 data class ProductResponse(
@@ -18,6 +18,6 @@ data class ProductResponse(
     val quantity: Double,
     val unit: String,
     val description: String,
-    val imageUrl: String?,
+    val imageUrls: MutableList<String>,
     val farmerName: String
 )

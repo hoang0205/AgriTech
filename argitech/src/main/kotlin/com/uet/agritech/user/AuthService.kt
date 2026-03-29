@@ -11,7 +11,8 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtService: JwtService,
-    private val emailService: EmailService
+    private val emailService: EmailService,
+    private val tokenBlacklistService: TokenBlacklistService
 ) {
 
     fun register(request: RegisterRequest): RegisterResponse {
@@ -106,5 +107,14 @@ class AuthService(
             accessToken = newAccessToken,
             refreshToken = newRefreshToken
         )
+    }
+
+    fun logout(request: LogoutRequest): LogoutResponse {
+        try {
+            tokenBlacklistService.blacklistToken(request.accessToken)
+            return LogoutResponse("Đăng xuất thành công!")
+        } catch (e: Exception) {
+            throw RuntimeException("Lỗi đăng xuất: ${e.message}")
+        }
     }
 }

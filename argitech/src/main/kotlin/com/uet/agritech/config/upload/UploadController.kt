@@ -1,5 +1,6 @@
 package com.uet.agritech.config.upload
 
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
@@ -10,10 +11,22 @@ class UploadController(
     private val cloudinaryService: CloudinaryService
 ) {
 
-    @PostMapping("/image")
-    fun uploadImage(@RequestParam("file") file: MultipartFile): ResponseEntity<Map<String, String>> {
-        val imageUrl = cloudinaryService.uploadFile(file)
+    @PostMapping(
+        value = ["/images"],
+        consumes = [MediaType.MULTIPART_FORM_DATA_VALUE]
+    )
+    fun uploadMultipleImages(
+        @RequestParam("files") files: List<MultipartFile>
+    ): ResponseEntity<List<String>> {
 
-        return ResponseEntity.ok(mapOf("imageUrl" to imageUrl))
+        if (files.isEmpty()) {
+            return ResponseEntity.badRequest().build()
+        }
+
+        val uploadedUrls = files.map { file ->
+            cloudinaryService.uploadFile(file)
+        }
+
+        return ResponseEntity.ok(uploadedUrls)
     }
 }

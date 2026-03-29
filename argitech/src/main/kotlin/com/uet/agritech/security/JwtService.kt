@@ -55,4 +55,13 @@ class JwtService {
             .expiration
         return expiration.before(Date())
     }
+
+    fun getTokenExpiration(token: String): Date {
+        return Jwts.parser()
+            .verifyWith(getSignInKey())
+            .build()
+            .parseSignedClaims(token)
+            .payload
+            .expiration
+    }
 }

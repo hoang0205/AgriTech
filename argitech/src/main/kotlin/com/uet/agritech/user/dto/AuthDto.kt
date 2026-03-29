@@ -44,11 +44,20 @@ data class ErrorResponse(
     val message: String
 )
 
+data class MessageResponse(
+    val message: String,
+    val success: Boolean = true
+)
+
 data class RefreshTokenRequest(
     val refreshToken: String
 )
 
-data class MessageResponse(
+data class LogoutRequest(
+    val accessToken: String
+)
+
+data class LogoutResponse(
     val message: String,
     val success: Boolean = true
 )

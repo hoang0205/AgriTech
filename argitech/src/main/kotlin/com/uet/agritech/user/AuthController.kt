@@ -37,4 +37,9 @@ class AuthController(private val authService: AuthService) {
     fun refresh(@RequestBody request: RefreshTokenRequest): ResponseEntity<LoginResponse> {
         return ResponseEntity.ok(authService.refreshAccessToken(request))
     }
+
+    @PostMapping("/logout")
+    fun logout(@RequestBody request: LogoutRequest): ResponseEntity<LogoutResponse> {
+        return ResponseEntity.ok(authService.logout(request))
+    }
 }

@@ -28,7 +28,13 @@ data class Product(
     @Column(columnDefinition = "TEXT")
     var description: String,
 
-    var imageUrl: String? = null,
+    @ElementCollection
+    @CollectionTable(
+        name = "product_images",
+        joinColumns = [JoinColumn(name = "product_id")]
+    )
+    @Column(name = "image_url")
+    var imageUrls: MutableList<String> = mutableListOf(),
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farmer_id", nullable = false)
