@@ -5,7 +5,7 @@ import jakarta.persistence.*
 
 @Entity
 @Table(name = "products")
-data class Product(
+class Product(
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     val id: String? = null,
