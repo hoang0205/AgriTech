@@ -22,7 +22,9 @@ data class LoginRequest(
 
 data class LoginResponse(
     val accessToken: String,
-    val refreshToken: String
+    val refreshToken: String,
+    val fullName: String,
+    val avatarUrl: String?
 )
 
 data class ForgotPasswordRequest(
@@ -60,4 +62,20 @@ data class LogoutRequest(
 data class LogoutResponse(
     val message: String,
     val success: Boolean = true
+)
+
+data class AddressRequest(
+    val receiverName: String,
+    val receiverPhone: String,
+    val detail: String
+)
+
+data class UpdateProfileRequest(
+    val fullName: String?,
+    val avatarUrl: String?
+)
+
+data class UserProfileResponse(
+    val fullName: String?,
+    val avatarUrl: String?
 )

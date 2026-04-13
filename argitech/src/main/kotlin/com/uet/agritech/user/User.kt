@@ -29,6 +29,9 @@ class User(
     @Column(nullable = false)
     var role: Role,
 
+    @Column
+    var avatarUrl: String? = null,
+
     var resetOtp: String? = null,
 
     var otpExpiryTime: Date? = null,

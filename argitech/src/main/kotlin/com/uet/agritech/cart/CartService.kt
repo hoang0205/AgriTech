@@ -82,7 +82,10 @@ class CartService(
                 quantity = item.quantity,
                 thumbnail = item.product.imageUrls.firstOrNull() ?: "",
                 unit = item.product.unit,
-                totalPrice = item.product.price * item.quantity
+                totalPrice = item.product.price * item.quantity,
+                farmerId = item.product.farmer.id!!,
+                farmerName = item.product.farmer.fullName,
+                farmerPhone = item.product.farmer.phoneNumber
             )
         }
     }

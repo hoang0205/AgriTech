@@ -47,7 +47,9 @@ class AuthService(
 
         return LoginResponse(
             accessToken = accessToken,
-            refreshToken = refreshToken
+            refreshToken = refreshToken,
+            fullName = user.fullName,
+            avatarUrl = user.avatarUrl
         )
     }
 
@@ -105,7 +107,9 @@ class AuthService(
 
         return LoginResponse(
             accessToken = newAccessToken,
-            refreshToken = newRefreshToken
+            refreshToken = newRefreshToken,
+            fullName = user.fullName,
+            avatarUrl = user.avatarUrl
         )
     }
 

@@ -13,7 +13,10 @@ data class CartResponse(
     val quantity: Double,
     val thumbnail: String,
     val unit: String,
-    val totalPrice: Double
+    val totalPrice: Double,
+    val farmerId: String,
+    val farmerName: String,
+    val farmerPhone: String
 )
 
 data class UpdateCartRequest(

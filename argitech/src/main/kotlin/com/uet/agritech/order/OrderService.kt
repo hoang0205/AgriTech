@@ -1,6 +1,8 @@
 package com.uet.agritech.order
 
 import com.uet.agritech.cart.CartItemRepository
+import com.uet.agritech.order.dto.BuyerOrderItemDTO
+import com.uet.agritech.order.dto.BuyerOrderResponse
 import com.uet.agritech.order.dto.CheckoutRequest
 import com.uet.agritech.order.dto.FarmerOrderItemDTO
 import com.uet.agritech.order.dto.FarmerOrderResponse
@@ -86,13 +88,17 @@ class OrderService(
                 orderId = order.id!!,
                 orderDate = order.orderDate.toString(),
                 buyerPhone = order.phoneNumber,
+                buyerName = order.user.fullName,
+                buyerId = order.user.id!!,
                 shippingAddress = order.shippingAddress,
                 status = order.status,
                 items = items.map { item ->
                     FarmerOrderItemDTO(
                         productName = item.product.name,
                         quantity = item.quantity,
-                        price = item.price
+                        unit = item.product.unit,
+                        price = item.price,
+                        thumbnail = item.product.imageUrls.firstOrNull() ?: ""
                     )
                 },
                 totalRevenueFromThisOrder = items.sumOf { it.price * it.quantity }
@@ -146,5 +152,35 @@ class OrderService(
 
         order.status = newStatus.name
         orderRepository.save(order)
+    }
+
+    fun getMyOrders(buyerPhone: String): List<BuyerOrderResponse> {
+        val user = userRepository.findByPhoneNumber(buyerPhone)
+            .orElseThrow { RuntimeException("User không tồn tại") }
+
+        val myOrders = orderRepository.findAllByUserOrderByIdDesc(user)
+
+        return myOrders.map { order ->
+            val orderItems = orderItemRepository.findAllByOrder(order)
+
+            BuyerOrderResponse(
+                orderId = order.id!!,
+                orderDate = order.orderDate.toString(),
+                status = order.status,
+                shippingAddress = order.shippingAddress,
+                totalAmount = order.totalAmount,
+                items = orderItems.map { item ->
+                    BuyerOrderItemDTO(
+                        productId = item.product.id!!,
+                        productName = item.product.name,
+                        farmerName = item.product.farmer.fullName,
+                        quantity = item.quantity,
+                        unit = item.product.unit,
+                        price = item.price,
+                        thumbnail = item.product.imageUrls.firstOrNull() ?: ""
+                    )
+                }
+            )
+        }
     }
 }

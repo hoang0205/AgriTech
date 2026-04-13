@@ -7,4 +7,6 @@ import org.springframework.stereotype.Repository
 @Repository
 interface OrderRepository : JpaRepository<Order, Long> {
     fun findAllByUserOrderByOrderDateDesc(user: User): List<Order>
+
+    fun findAllByUserOrderByIdDesc(user: User): List<Order>
 }

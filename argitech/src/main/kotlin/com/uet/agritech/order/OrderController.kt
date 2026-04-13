@@ -1,5 +1,6 @@
 package com.uet.agritech.order
 
+import com.uet.agritech.order.dto.BuyerOrderResponse
 import com.uet.agritech.order.dto.CheckoutRequest
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderMessageResponse
@@ -37,5 +38,12 @@ class OrderController(private val orderService: OrderService) {
         orderService.updateStatus(orderId, request.status, phone.toString())
 
         return ResponseEntity.ok(OrderMessageResponse("Cập nhật trạng thái đơn hàng thành công!"))
+    }
+
+    @GetMapping("/my-orders")
+    fun getMyOrders(): ResponseEntity<List<BuyerOrderResponse>> {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+        val orders = orderService.getMyOrders(phone.toString())
+        return ResponseEntity.ok(orders)
     }
 }
