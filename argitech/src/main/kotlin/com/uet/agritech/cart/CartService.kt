@@ -20,6 +20,10 @@ class CartService(
         val product = productRepository.findById(request.productId)
             .orElseThrow { RuntimeException("Sản phẩm không tồn tại") }
 
+        if (product.farmer.id == user.id) {
+            throw RuntimeException("Bạn không thể thêm sản phẩm của chính mình vào giỏ hàng!")
+        }
+
         if (request.quantity > product.quantity) {
             throw RuntimeException("Số lượng mua vượt quá hàng trong kho!")
         }

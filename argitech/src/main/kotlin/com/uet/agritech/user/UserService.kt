@@ -1,12 +1,17 @@
 package com.uet.agritech.user
 
+import com.uet.agritech.user.dto.ChangePasswordRequest
 import com.uet.agritech.user.dto.MessageResponse
 import com.uet.agritech.user.dto.UpdateProfileRequest
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
-class UserService(private val userRepository: UserRepository) {
+class UserService(
+    private val userRepository: UserRepository,
+    private val passwordEncoder: PasswordEncoder
+) {
 
     @Transactional
     fun updateProfile(phoneNumber: String, request: UpdateProfileRequest): MessageResponse {
@@ -19,5 +24,26 @@ class UserService(private val userRepository: UserRepository) {
         userRepository.save(user)
 
         return MessageResponse("Cập nhật thông tin cá nhân thành công")
+    }
+
+    @Transactional
+    fun changePassword(request: ChangePasswordRequest, phoneNumber: String) {
+        if (request.newPassword != request.confirmPassword) {
+            throw RuntimeException("Mật khẩu xác nhận không khớp!")
+        }
+
+        val user = userRepository.findByPhoneNumber(phoneNumber)
+            .orElseThrow { RuntimeException("Người dùng không tồn tại!") }
+
+        if (!passwordEncoder.matches(request.oldPassword, user.password)) {
+            throw RuntimeException("Mật khẩu cũ không chính xác!")
+        }
+
+        if (passwordEncoder.matches(request.newPassword, user.password)) {
+            throw RuntimeException("Mật khẩu mới không được trùng với mật khẩu cũ!")
+        }
+
+        user.password = passwordEncoder.encode(request.newPassword).toString()
+        userRepository.save(user)
     }
 }

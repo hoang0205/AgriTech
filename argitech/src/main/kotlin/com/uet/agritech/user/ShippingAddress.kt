@@ -1,5 +1,6 @@
 package com.uet.agritech.user
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import jakarta.persistence.*
 
 @Entity
@@ -11,6 +12,7 @@ class ShippingAddress(
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
+    @JsonIgnore
     val user: User,
 
     @Column(nullable = false)
@@ -24,4 +26,12 @@ class ShippingAddress(
 
     @Column(nullable = false)
     var isDefault: Boolean = false
+)
+
+data class ShippingAddressResponse(
+    val id: Long,
+    val receiverName: String,
+    val phoneNumber: String,
+    val addressDetail: String,
+    val isDefault: Boolean
 )

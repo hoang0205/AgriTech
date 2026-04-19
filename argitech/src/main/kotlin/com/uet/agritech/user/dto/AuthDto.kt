@@ -67,7 +67,8 @@ data class LogoutResponse(
 data class AddressRequest(
     val receiverName: String,
     val receiverPhone: String,
-    val detail: String
+    val detail: String,
+    val isDefault: Boolean = false,
 )
 
 data class UpdateProfileRequest(
