@@ -3,6 +3,7 @@ package com.uet.agritech.user
 import com.uet.agritech.user.dto.ChangePasswordRequest
 import com.uet.agritech.user.dto.MessageResponse
 import com.uet.agritech.user.dto.UpdateProfileRequest
+import com.uet.agritech.user.dto.UserProfileResponse
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -14,7 +15,7 @@ class UserService(
 ) {
 
     @Transactional
-    fun updateProfile(phoneNumber: String, request: UpdateProfileRequest): MessageResponse {
+    fun updateProfile(phoneNumber: String, request: UpdateProfileRequest): UserProfileResponse {
         val user = userRepository.findByPhoneNumber(phoneNumber)
             .orElseThrow { RuntimeException("User không tồn tại") }
 
@@ -23,7 +24,10 @@ class UserService(
 
         userRepository.save(user)
 
-        return MessageResponse("Cập nhật thông tin cá nhân thành công")
+        return UserProfileResponse(
+            fullName = user.fullName,
+            avatarUrl = user.avatarUrl ?: ""
+        )
     }
 
     @Transactional
