@@ -154,11 +154,15 @@ class OrderService(
         orderRepository.save(order)
     }
 
-    fun getMyOrders(buyerPhone: String): List<BuyerOrderResponse> {
+    fun getMyOrders(buyerPhone: String, status: String? = null): List<BuyerOrderResponse> {
         val user = userRepository.findByPhoneNumber(buyerPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
 
-        val myOrders = orderRepository.findAllByUserOrderByIdDesc(user)
+        val myOrders = if (status.isNullOrBlank()) {
+            orderRepository.findAllByUserOrderByOrderDateDesc(user)
+        } else {
+            orderRepository.findAllByUserAndStatusOrderByOrderDateDesc(user, status.uppercase())
+        }
 
         return myOrders.map { order ->
             val orderItems = orderItemRepository.findAllByOrder(order)
@@ -182,5 +186,14 @@ class OrderService(
                 }
             )
         }
+    }
+
+    fun countMyOrdersByStatus(buyerPhone: String): Map<String, Long> {
+        val user = userRepository.findByPhoneNumber(buyerPhone)
+            .orElseThrow { RuntimeException("User không tồn tại") }
+
+        val counts = orderRepository.countOrdersByStatusForUser(user)
+
+        return counts.associate { it.getStatus() to it.getCount() }
     }
 }

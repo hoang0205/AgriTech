@@ -43,7 +43,7 @@ class UserService(
             throw RuntimeException("Mật khẩu cũ không chính xác!")
         }
 
-        if (passwordEncoder.matches(request.newPassword, user.password)) {
+        if (request.newPassword == request.oldPassword) {
             throw RuntimeException("Mật khẩu mới không được trùng với mật khẩu cũ!")
         }
 

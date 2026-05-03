@@ -60,3 +60,8 @@ data class BuyerOrderItemDTO(
     val price: Double,
     val thumbnail: String
 )
+
+interface OrderStatusCount {
+    fun getStatus(): String
+    fun getCount(): Long
+}

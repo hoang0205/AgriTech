@@ -41,9 +41,22 @@ class OrderController(private val orderService: OrderService) {
     }
 
     @GetMapping("/my-orders")
-    fun getMyOrders(): ResponseEntity<List<BuyerOrderResponse>> {
+    fun getMyOrders(
+        @RequestParam(required = false) status: String?
+    ): ResponseEntity<List<BuyerOrderResponse>> {
+
         val phone = SecurityContextHolder.getContext().authentication?.name
-        val orders = orderService.getMyOrders(phone.toString())
+
+        val orders = orderService.getMyOrders(phone.toString(), status)
         return ResponseEntity.ok(orders)
+    }
+
+    @GetMapping("/my-orders/count")
+    fun countMyOrdersByStatus(): ResponseEntity<Map<String, Long>> {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+            ?: throw RuntimeException("Chưa đăng nhập")
+
+        val statusCounts = orderService.countMyOrdersByStatus(phone)
+        return ResponseEntity.ok(statusCounts)
     }
 }
