@@ -8,6 +8,7 @@ import com.uet.agritech.order.dto.FarmerOrderItemDTO
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderStatus
 import com.uet.agritech.product.ProductRepository
+import com.uet.agritech.user.RecommendationService
 import com.uet.agritech.user.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -18,7 +19,8 @@ class OrderService(
     private val orderItemRepository: OrderItemRepository,
     private val cartItemRepository: CartItemRepository,
     private val productRepository: ProductRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val interactionService: RecommendationService
 ) {
 
     @Transactional
@@ -62,6 +64,8 @@ class OrderService(
             val product = cartItem.product
             product.quantity -= cartItem.quantity
             productRepository.save(product)
+
+            interactionService.recordInteraction(userPhone, product, "PURCHASE", 5.0)
 
             OrderItem(
                 order = savedOrder,

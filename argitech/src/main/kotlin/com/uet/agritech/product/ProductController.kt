@@ -2,7 +2,9 @@ package com.uet.agritech.product
 
 import com.uet.agritech.product.dto.ProductRequest
 import com.uet.agritech.product.dto.ProductResponse
+import com.uet.agritech.user.RecommendationService
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
@@ -14,7 +16,8 @@ import org.springframework.web.bind.annotation.RestController
 @RestController
 @RequestMapping("/api/products")
 class ProductController(
-    private val productService: ProductService
+    private val productService: ProductService,
+    private val recommendationService: RecommendationService
 ) {
 
     @PostMapping
@@ -63,5 +66,14 @@ class ProductController(
     @GetMapping("/{id}")
     fun getProductById(@PathVariable id: String): ResponseEntity<ProductResponse> {
         return ResponseEntity.ok(productService.getProductById(id))
+    }
+
+    @GetMapping("/recommendations")
+    fun getRecommendations(
+        @RequestParam(defaultValue = "10") limit: Int
+    ): ResponseEntity<List<ProductResponse>> {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+        val recommendations = recommendationService.getMixedRecommendations(phone.toString(), limit)
+        return ResponseEntity.ok(recommendations)
     }
 }

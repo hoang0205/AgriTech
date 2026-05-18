@@ -3,6 +3,7 @@ package com.uet.agritech.cart
 import com.uet.agritech.cart.dto.AddToCartRequest
 import com.uet.agritech.cart.dto.CartResponse
 import com.uet.agritech.product.ProductRepository
+import com.uet.agritech.user.RecommendationService
 import com.uet.agritech.user.UserRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -11,7 +12,8 @@ import org.springframework.transaction.annotation.Transactional
 class CartService(
     private val cartItemRepository: CartItemRepository,
     private val productRepository: ProductRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val interactionService: RecommendationService
 ) {
     @Transactional
     fun addToCart(request: AddToCartRequest, phoneNumber: String) {
@@ -29,6 +31,8 @@ class CartService(
         }
 
         val existingItem = cartItemRepository.findByUserAndProduct(user, product)
+
+        interactionService.recordInteraction(phoneNumber, product, "ADD_TO_CART", 2.0)
 
         if (existingItem != null) {
             existingItem.quantity += request.quantity

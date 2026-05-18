@@ -20,6 +20,24 @@ interface ProductRepository : JpaRepository<Product, String> {
 
     fun findByNameContainingIgnoreCase(name: String, pageable: Pageable): Page<Product>
 
-    @Query(value = "SELECT DISTINCT name FROM products WHERE LOWER(name) LIKE LOWER(CONCAT('%', :keyword, '%')) LIMIT 5", nativeQuery = true)
+    @Query(
+        value = "SELECT DISTINCT name FROM products WHERE LOWER(name) LIKE LOWER(CONCAT('%', :keyword, '%')) LIMIT 5",
+        nativeQuery = true
+    )
     fun suggestProductNames(keyword: String): List<String>
+
+    @Query(
+        """
+    SELECT p FROM Product p 
+    WHERE p.category = :category 
+    AND p.id NOT IN :viewedProductIds
+    ORDER BY RAND()
+"""
+    )
+    fun findByCategoryNotInProductIds(
+        category: String,
+        viewedProductIds: List<String>,
+        pageable: Pageable
+    ): List<Product>
+
 }
