@@ -34,7 +34,7 @@ class DataSeeder(
     @Transactional
     override fun run(vararg args: String) {
         if (provinceRepository.count() == 0L) {
-            println("🚚 DEBUG: Đang nạp dữ liệu hành chính mới...")
+            println("DEBUG: Đang nạp dữ liệu hành chính mới...")
             try {
                 val provinceMap = loadMapData("data/province.json")
                 val provinces = provinceMap.values.map {
@@ -50,9 +50,9 @@ class DataSeeder(
                     } else null
                 }
                 wardRepository.saveAll(wards)
-                println("✅ DEBUG: Nạp tỉnh thành và xã phường thành công!")
+                println("DEBUG: Nạp tỉnh thành và xã phường thành công!")
             } catch (e: Exception) {
-                println("❌ ERROR: Lỗi khi nạp dữ liệu hành chính: ${e.message}")
+                println("ERROR: Lỗi khi nạp dữ liệu hành chính: ${e.message}")
             }
         }
 

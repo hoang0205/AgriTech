@@ -9,6 +9,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class ProductService(
@@ -159,5 +160,20 @@ class ProductService(
             imageUrls = product.imageUrls,
             farmerName = product.farmer.fullName
         )
+    }
+
+    @Transactional
+    fun updateProductRating(productId: String, newRating: Int) {
+        val product = productRepository.findById(productId)
+            .orElseThrow { RuntimeException("Sản phẩm không tồn tại") }
+
+        val currentTotalScore = product.averageRating * product.reviewCount
+
+        product.reviewCount += 1
+
+        val newAverage = (currentTotalScore + newRating) / product.reviewCount
+        product.averageRating = Math.round(newAverage * 10.0) / 10.0
+
+        productRepository.save(product)
     }
 }

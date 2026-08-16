@@ -38,5 +38,11 @@ class Product(
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "farmer_id", nullable = false)
-    var farmer: User
+    var farmer: User,
+
+    @Column(nullable = false)
+    var averageRating: Double = 0.0,
+
+    @Column(nullable = false)
+    var reviewCount: Int = 0
 )
