@@ -52,7 +52,7 @@ class ReviewService(
         val reviews = reviewRepository.findByProductId(productId, pageable)
 
         return reviews.map { review ->
-            val user = userRepository.findById(review.userId).orElse(null)
+            val user = userRepository.findByPhoneNumber(review.userId).orElse(null)
             val fullName = user?.fullName ?: "Người dùng ẩn danh"
 
             ReviewResponseDto(

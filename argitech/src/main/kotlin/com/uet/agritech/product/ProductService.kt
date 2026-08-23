@@ -161,19 +161,4 @@ class ProductService(
             farmerName = product.farmer.fullName
         )
     }
-
-    @Transactional
-    fun updateProductRating(productId: String, newRating: Int) {
-        val product = productRepository.findById(productId)
-            .orElseThrow { RuntimeException("Sản phẩm không tồn tại") }
-
-        val currentTotalScore = product.averageRating * product.reviewCount
-
-        product.reviewCount += 1
-
-        val newAverage = (currentTotalScore + newRating) / product.reviewCount
-        product.averageRating = Math.round(newAverage * 10.0) / 10.0
-
-        productRepository.save(product)
-    }
 }
