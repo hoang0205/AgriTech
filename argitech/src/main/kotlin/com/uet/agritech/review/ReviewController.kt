@@ -1,7 +1,10 @@
 package com.uet.agritech.review
 
 import com.uet.agritech.review.dto.ReviewRequestDto
+import com.uet.agritech.review.dto.ReviewResponseDto
 import org.springframework.data.domain.Page
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
@@ -25,7 +28,9 @@ class ReviewController(
         @PathVariable productId: String,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "10") size: Int
-    ): ResponseEntity<Page<Review>> {
-        return ResponseEntity.ok(reviewService.getReviewsByProduct(productId, page, size))
+    ): ResponseEntity<Page<ReviewResponseDto>> {
+        val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
+        val reviews = reviewService.getReviewsOfProduct(productId, pageable)
+        return ResponseEntity.ok(reviews)
     }
 }

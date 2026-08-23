@@ -1,5 +1,6 @@
 package com.uet.agritech.review
 
+import com.uet.agritech.product.Product
 import jakarta.persistence.*
 import java.time.LocalDateTime
 
@@ -7,11 +8,12 @@ import java.time.LocalDateTime
 @Table(name = "reviews")
 data class Review(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    val id: String? = null,
+    @Column(length = 36)
+    val id: String = java.util.UUID.randomUUID().toString(),
 
-    @Column(nullable = false)
-    val productId: String,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "product_id", nullable = false)
+    val product: Product,
 
     @Column(nullable = false)
     val userId: String,

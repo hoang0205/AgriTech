@@ -41,7 +41,7 @@ class Product(
     var farmer: User,
 
     @Column(nullable = false)
-    var averageRating: Double = 0.0,
+    var rating: Double = 0.0,
 
     @Column(nullable = false)
     var reviewCount: Int = 0
