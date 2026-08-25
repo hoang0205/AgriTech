@@ -15,4 +15,6 @@ interface ReviewRepository : JpaRepository<Review, String> {
 
     @Query("SELECT AVG(r.rating) FROM Review r WHERE r.product.id = :productId")
     fun getAverageRatingByProductId(productId: String): Double?
+
+    fun countByProductIdAndRating(productId: String, rating: Int): Long
 }

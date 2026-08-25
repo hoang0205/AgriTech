@@ -47,7 +47,9 @@ class ProductService(
             unit = savedProduct.unit,
             description = savedProduct.description,
             imageUrls = request.imageUrls,
-            farmerName = farmer.fullName
+            farmerName = farmer.fullName,
+            rating = savedProduct.rating,
+            reviewCount = savedProduct.reviewCount
         )
     }
 
@@ -66,7 +68,9 @@ class ProductService(
                 unit = product.unit,
                 description = product.description,
                 imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount
             )
         }
     }
@@ -84,7 +88,9 @@ class ProductService(
                 unit = product.unit,
                 description = product.description,
                 imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount
             )
         }
     }
@@ -104,7 +110,9 @@ class ProductService(
                 unit = product.unit,
                 description = product.description,
                 imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount
             )
         }
     }
@@ -131,7 +139,9 @@ class ProductService(
                 unit = product.unit,
                 description = product.description,
                 imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount
             )
         }
     }
@@ -158,7 +168,9 @@ class ProductService(
             unit = product.unit,
             description = product.description,
             imageUrls = product.imageUrls,
-            farmerName = product.farmer.fullName
+            farmerName = product.farmer.fullName,
+            rating = product.rating,
+            reviewCount = product.reviewCount
         )
     }
 }

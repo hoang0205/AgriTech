@@ -2,6 +2,7 @@ package com.uet.agritech.review
 
 import com.uet.agritech.review.dto.ReviewRequestDto
 import com.uet.agritech.review.dto.ReviewResponseDto
+import com.uet.agritech.review.dto.ReviewSummaryDto
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -32,5 +33,11 @@ class ReviewController(
         val pageable = PageRequest.of(page, size, Sort.by("createdAt").descending())
         val reviews = reviewService.getReviewsOfProduct(productId, pageable)
         return ResponseEntity.ok(reviews)
+    }
+
+    @GetMapping("/product/{productId}/summary")
+    fun getReviewSummary(@PathVariable productId: String): ResponseEntity<ReviewSummaryDto> {
+        val summary = reviewService.getReviewSummary(productId)
+        return ResponseEntity.ok(summary)
     }
 }

@@ -18,3 +18,13 @@ data class ReviewResponseDto(
     val imageUrls: List<String>,
     val createdAt: LocalDateTime
 )
+
+data class ReviewSummaryDto(
+    val totalReviews: Int,
+    val averageRating: Double,
+    val star5: Int,
+    val star4: Int,
+    val star3: Int,
+    val star2: Int,
+    val star1: Int
+)

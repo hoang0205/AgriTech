@@ -19,5 +19,7 @@ data class ProductResponse(
     val unit: String,
     val description: String,
     val imageUrls: MutableList<String>,
-    val farmerName: String
+    val farmerName: String,
+    val rating: Double,
+    val reviewCount: Int
 )

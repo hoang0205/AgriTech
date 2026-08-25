@@ -3,6 +3,7 @@ package com.uet.agritech.review
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.review.dto.ReviewRequestDto
 import com.uet.agritech.review.dto.ReviewResponseDto
+import com.uet.agritech.review.dto.ReviewSummaryDto
 import com.uet.agritech.user.UserRepository // Import UserRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -65,5 +66,25 @@ class ReviewService(
                 createdAt = review.createdAt
             )
         }
+    }
+
+    fun getReviewSummary(productId: String): ReviewSummaryDto {
+        val totalReviews = reviewRepository.countByProductId(productId).toInt()
+        val avgRating = reviewRepository.getAverageRatingByProductId(productId) ?: 0.0
+        val roundedRating = kotlin.math.round(avgRating * 10.0) / 10.0
+
+        if (totalReviews == 0) {
+            return ReviewSummaryDto(0, 0.0, 0, 0, 0, 0, 0)
+        }
+
+        return ReviewSummaryDto(
+            totalReviews = totalReviews,
+            averageRating = roundedRating,
+            star5 = reviewRepository.countByProductIdAndRating(productId, 5).toInt(),
+            star4 = reviewRepository.countByProductIdAndRating(productId, 4).toInt(),
+            star3 = reviewRepository.countByProductIdAndRating(productId, 3).toInt(),
+            star2 = reviewRepository.countByProductIdAndRating(productId, 2).toInt(),
+            star1 = reviewRepository.countByProductIdAndRating(productId, 1).toInt()
+        )
     }
 }
