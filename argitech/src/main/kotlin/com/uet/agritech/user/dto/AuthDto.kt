@@ -24,9 +24,9 @@ data class LoginResponse(
     val accessToken: String,
     val refreshToken: String,
     val fullName: String,
-    val avatarUrl: String?
+    val avatarUrl: String?,
+    val firebaseToken: String? = null
 )
-
 data class ForgotPasswordRequest(
     val email: String
 )

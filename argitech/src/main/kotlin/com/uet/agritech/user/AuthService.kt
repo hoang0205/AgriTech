@@ -1,5 +1,6 @@
 package com.uet.agritech.user
 
+import com.google.firebase.auth.FirebaseAuth
 import com.uet.agritech.security.JwtService
 import com.uet.agritech.user.dto.*
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -44,12 +45,14 @@ class AuthService(
         }
         val accessToken = jwtService.generateAccessToken(user)
         val refreshToken = jwtService.generateRefreshToken(user)
+        val firebaseToken = createFirebaseToken(user.id)
 
         return LoginResponse(
             accessToken = accessToken,
             refreshToken = refreshToken,
             fullName = user.fullName,
-            avatarUrl = user.avatarUrl
+            avatarUrl = user.avatarUrl,
+            firebaseToken = firebaseToken
         )
     }
 
@@ -119,6 +122,12 @@ class AuthService(
             return LogoutResponse("Đăng xuất thành công!")
         } catch (e: Exception) {
             throw RuntimeException("Lỗi đăng xuất: ${e.message}")
+        }
+    }
+
+    private fun createFirebaseToken(userId: String?): String? {
+        return userId?.let {
+            FirebaseAuth.getInstance().createCustomToken(it)
         }
     }
 }
