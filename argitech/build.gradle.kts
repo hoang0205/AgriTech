@@ -33,6 +33,7 @@ dependencies {
 	testImplementation("org.jetbrains.kotlin:kotlin-test-junit5")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	implementation("org.springframework.boot:spring-boot-starter-mail")
+	implementation("com.google.firebase:firebase-admin:9.3.0")
 }
 
 kotlin {

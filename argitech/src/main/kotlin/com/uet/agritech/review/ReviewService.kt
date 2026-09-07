@@ -24,6 +24,11 @@ class ReviewService(
         val product = productRepository.findById(dto.productId)
             .orElseThrow { RuntimeException("Sản phẩm không tồn tại với ID: ${dto.productId}") }
 
+        val isAlreadyReviewed = reviewRepository.existsByProductIdAndUserId(dto.productId, userId)
+        if (isAlreadyReviewed) {
+            throw RuntimeException("Bạn đã đánh giá sản phẩm này rồi!")
+        }
+
         if (dto.rating !in 1..5) {
             throw RuntimeException("Điểm đánh giá phải từ 1 đến 5")
         }

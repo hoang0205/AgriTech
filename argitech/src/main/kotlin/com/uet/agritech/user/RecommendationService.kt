@@ -47,7 +47,9 @@ class RecommendationService(
                     unit = product.unit,
                     description = product.description,
                     imageUrls = product.imageUrls,
-                    farmerName = product.farmer.fullName
+                    farmerName = product.farmer.fullName,
+                    rating = product.rating,
+                    reviewCount = product.reviewCount,
                 )
             } catch (e: Exception) {
                 logger.error("Lỗi mapping product: ${e.message}")
@@ -91,7 +93,9 @@ class RecommendationService(
                             unit = product.unit,
                             description = product.description,
                             imageUrls = product.imageUrls,
-                            farmerName = product.farmer.fullName
+                            farmerName = product.farmer.fullName,
+                            rating = product.rating,
+                            reviewCount = product.reviewCount,
                         )
                     )
                 }
@@ -138,7 +142,9 @@ class RecommendationService(
                                 unit = product.unit,
                                 description = product.description,
                                 imageUrls = product.imageUrls,
-                                farmerName = product.farmer.fullName
+                                farmerName = product.farmer.fullName,
+                                rating = product.rating,
+                                reviewCount = product.reviewCount,
                             )
                         )
                     }
@@ -210,7 +216,9 @@ class RecommendationService(
                 unit = product.unit,
                 description = product.description,
                 imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount,
             )
         }
     }

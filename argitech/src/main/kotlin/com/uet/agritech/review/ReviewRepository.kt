@@ -17,4 +17,6 @@ interface ReviewRepository : JpaRepository<Review, String> {
     fun getAverageRatingByProductId(productId: String): Double?
 
     fun countByProductIdAndRating(productId: String, rating: Int): Long
+
+    fun existsByProductIdAndUserId(productId: String, userId: String): Boolean
 }
