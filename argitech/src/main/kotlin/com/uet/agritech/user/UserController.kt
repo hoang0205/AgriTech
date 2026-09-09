@@ -42,4 +42,16 @@ class UserController(
 
         return ResponseEntity.ok(MessageResponse("Đổi mật khẩu thành công!"))
     }
+
+    @PutMapping("/fcm-token")
+    fun updateFcmToken(
+        @RequestHeader("Authorization") authHeader: String,
+        @RequestBody body: Map<String, String>
+    ): ResponseEntity<Map<String, String>> {
+        val token = body["fcmToken"]
+            ?: return ResponseEntity.badRequest().body(mapOf("message" to "fcmToken không được để trống!"))
+
+        userService.updateFcmToken(authHeader, token)
+        return ResponseEntity.ok(mapOf("message" to "Cập nhật FCM Token thành công"))
+    }
 }

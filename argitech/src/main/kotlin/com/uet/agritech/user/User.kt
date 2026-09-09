@@ -37,7 +37,10 @@ class User(
     var otpExpiryTime: Date? = null,
 
     @Temporal(TemporalType.TIMESTAMP)
-    var createdAt: Date? = null
+    var createdAt: Date? = null,
+
+    @Column(name = "fcm_token")
+    var fcmToken: String? = null
 ) {
     @PrePersist
     fun onCreate() {

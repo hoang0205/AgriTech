@@ -50,6 +50,9 @@ class RecommendationService(
                     farmerName = product.farmer.fullName,
                     rating = product.rating,
                     reviewCount = product.reviewCount,
+                    farmerId = product.farmer.id ?: return@mapNotNull null,
+                    farmerAvatar = product.farmer.avatarUrl ?: "",
+                    farmerPhone = product.farmer.phoneNumber ?: ""
                 )
             } catch (e: Exception) {
                 logger.error("Lỗi mapping product: ${e.message}")
@@ -96,6 +99,9 @@ class RecommendationService(
                             farmerName = product.farmer.fullName,
                             rating = product.rating,
                             reviewCount = product.reviewCount,
+                            farmerId = product.farmer.id ?: "",
+                            farmerAvatar = product.farmer.avatarUrl ?: "",
+                            farmerPhone = product.farmer.phoneNumber ?: ""
                         )
                     )
                 }
@@ -145,6 +151,9 @@ class RecommendationService(
                                 farmerName = product.farmer.fullName,
                                 rating = product.rating,
                                 reviewCount = product.reviewCount,
+                                farmerId = product.farmer.id ?: "",
+                                farmerAvatar = product.farmer.avatarUrl ?: "",
+                                farmerPhone = product.farmer.phoneNumber ?: ""
                             )
                         )
                     }
@@ -219,6 +228,9 @@ class RecommendationService(
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
                 reviewCount = product.reviewCount,
+                farmerId = product.farmer.id ?: "",
+                farmerAvatar = product.farmer.avatarUrl ?: "",
+                farmerPhone = product.farmer.phoneNumber ?: ""
             )
         }
     }

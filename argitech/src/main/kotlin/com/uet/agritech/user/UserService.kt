@@ -1,5 +1,6 @@
 package com.uet.agritech.user
 
+import com.uet.agritech.security.JwtService
 import com.uet.agritech.user.dto.ChangePasswordRequest
 import com.uet.agritech.user.dto.MessageResponse
 import com.uet.agritech.user.dto.UpdateProfileRequest
@@ -11,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class UserService(
     private val userRepository: UserRepository,
+    private val jwtService: JwtService,
     private val passwordEncoder: PasswordEncoder
 ) {
 
@@ -48,6 +50,22 @@ class UserService(
         }
 
         user.password = passwordEncoder.encode(request.newPassword).toString()
+        userRepository.save(user)
+    }
+
+    fun updateFcmToken(authHeader: String, fcmToken: String) {
+        val token = if (authHeader.startsWith("Bearer ")) {
+            authHeader.substring(7)
+        } else {
+            authHeader
+        }
+
+        val phoneNumber = jwtService.extractPhoneNumber(token)
+
+        val user = userRepository.findByPhoneNumber(phoneNumber)
+            .orElseThrow { RuntimeException("Người dùng không tồn tại!") }
+
+        user.fcmToken = fcmToken
         userRepository.save(user)
     }
 }

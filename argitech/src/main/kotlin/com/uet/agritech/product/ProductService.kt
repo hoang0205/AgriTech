@@ -49,7 +49,10 @@ class ProductService(
             imageUrls = request.imageUrls,
             farmerName = farmer.fullName,
             rating = savedProduct.rating,
-            reviewCount = savedProduct.reviewCount
+            reviewCount = savedProduct.reviewCount,
+            farmerId = farmer.id!!,
+            farmerPhone = farmer.phoneNumber,
+            farmerAvatar = farmer.avatarUrl ?: ""
         )
     }
 
@@ -70,7 +73,10 @@ class ProductService(
                 imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
-                reviewCount = product.reviewCount
+                reviewCount = product.reviewCount,
+                farmerId = product.farmer.id!!,
+                farmerPhone = product.farmer.phoneNumber,
+                farmerAvatar = product.farmer.avatarUrl ?: ""
             )
         }
     }
@@ -90,7 +96,10 @@ class ProductService(
                 imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
-                reviewCount = product.reviewCount
+                reviewCount = product.reviewCount,
+                farmerId = product.farmer.id!!,
+                farmerPhone = product.farmer.phoneNumber,
+                farmerAvatar = product.farmer.avatarUrl ?: ""
             )
         }
     }
@@ -112,7 +121,10 @@ class ProductService(
                 imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
-                reviewCount = product.reviewCount
+                reviewCount = product.reviewCount,
+                farmerId = product.farmer.id!!,
+                farmerPhone = product.farmer.phoneNumber,
+                farmerAvatar = product.farmer.avatarUrl ?: ""
             )
         }
     }
@@ -141,7 +153,10 @@ class ProductService(
                 imageUrls = product.imageUrls,
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
-                reviewCount = product.reviewCount
+                reviewCount = product.reviewCount,
+                farmerId = product.farmer.id!!,
+                farmerPhone = product.farmer.phoneNumber,
+                farmerAvatar = product.farmer.avatarUrl ?: ""
             )
         }
     }
@@ -170,7 +185,10 @@ class ProductService(
             imageUrls = product.imageUrls,
             farmerName = product.farmer.fullName,
             rating = product.rating,
-            reviewCount = product.reviewCount
+            reviewCount = product.reviewCount,
+            farmerId = product.farmer.id!!,
+            farmerPhone = product.farmer.phoneNumber,
+            farmerAvatar = product.farmer.avatarUrl ?: ""
         )
     }
 }
