@@ -11,14 +11,23 @@ import org.springframework.web.bind.annotation.*
 
 @RestController
 @RequestMapping("/api/orders")
-class OrderController(private val orderService: OrderService) {
+class OrderController(
+    private val orderService: OrderService,
+    private val orderRepository: OrderRepository,
+    private val vnpayService: VnpayService
+) {
 
     @PostMapping("/checkout")
     fun checkout(@RequestBody request: CheckoutRequest): ResponseEntity<OrderMessageResponse> {
         val phone = SecurityContextHolder.getContext().authentication?.name
-        orderService.checkout(request, phone.toString())
+        val createdOrder = orderService.checkout(request, phone.toString())
 
-        return ResponseEntity.ok(OrderMessageResponse("Đặt hàng thành công!"))
+        return ResponseEntity.ok(
+            OrderMessageResponse(
+                message = "Đặt hàng thành công!",
+                orderId = createdOrder.id
+            )
+        )
     }
 
     @GetMapping("/seller")
@@ -58,5 +67,35 @@ class OrderController(private val orderService: OrderService) {
 
         val statusCounts = orderService.countMyOrdersByStatus(phone)
         return ResponseEntity.ok(statusCounts)
+    }
+
+    @PostMapping("/{id}/vnpay-payment")
+    fun getVnpayPaymentUrl(
+        @PathVariable id: Long,
+        request: jakarta.servlet.http.HttpServletRequest
+    ): ResponseEntity<Map<String, String>> {
+        val order = orderRepository.findById(id)
+            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$id") }
+
+        val ipAddress = request.remoteAddr ?: "127.0.0.1"
+
+        val paymentUrl = vnpayService.createPaymentUrl(
+            orderId = order.id,
+            amount = order.totalAmount.toLong(),
+            ipAddress = ipAddress
+        )
+
+        return ResponseEntity.ok(mapOf("paymentUrl" to paymentUrl))
+    }
+
+    @PutMapping("/{id}/mark-as-paid")
+    fun markOrderAsPaid(@PathVariable id: Long): ResponseEntity<Map<String, String>> {
+        val order = orderRepository.findById(id)
+            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$id") }
+
+        order.status = "PAID"
+        orderRepository.save(order)
+
+        return ResponseEntity.ok(mapOf("message" to "Cập nhật trạng thái thành công"))
     }
 }

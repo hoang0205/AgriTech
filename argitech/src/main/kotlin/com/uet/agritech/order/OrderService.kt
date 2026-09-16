@@ -24,7 +24,7 @@ class OrderService(
 ) {
 
     @Transactional
-    fun checkout(request: CheckoutRequest, userPhone: String) {
+    fun checkout(request: CheckoutRequest, userPhone: String): Order {
         val user = userRepository.findByPhoneNumber(userPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
 
@@ -77,6 +77,7 @@ class OrderService(
         orderItemRepository.saveAll(orderItems)
 
         cartItemRepository.deleteAll(cartItems)
+        return savedOrder
     }
 
     fun getOrdersForFarmer(farmerPhone: String): List<FarmerOrderResponse> {

@@ -39,7 +39,8 @@ enum class OrderStatus {
 }
 
 data class OrderMessageResponse(
-    val message: String
+    val message: String,
+    val orderId: Long? = null
 )
 
 data class BuyerOrderResponse(
