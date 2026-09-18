@@ -10,8 +10,8 @@ import javax.crypto.spec.SecretKeySpec
 
 object VnpayConfig {
     const val vnp_PayUrl = "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html"
-    const val vnp_TmnCode = "CGXZLS0Z"
-    const val vnp_HashSecret = "XNBCJFAKAZQSGUTIGIFZTIOYVXZVVAYE"
+    const val vnp_TmnCode = "PVTGE31B"
+    const val vnp_HashSecret = "ELBYLSAZTGRXRXKZTQNHQCEEXZMWTROB"
 
     fun hmacSHA512(key: String, data: String): String {
         val hmac512 = Mac.getInstance("HmacSHA512")

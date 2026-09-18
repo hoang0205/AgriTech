@@ -3,7 +3,8 @@ package com.uet.agritech.order.dto
 data class CheckoutRequest(
     val shippingAddress: String,
     val phoneNumber: String,
-    val selectedCartItemIds: List<Long>
+    val selectedCartItemIds: List<Long>,
+    val paymentMethod: String? = "COD"
 )
 
 data class FarmerOrderResponse(

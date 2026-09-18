@@ -1,4 +1,4 @@
-package com.uet.agritech.security // Nhớ check lại dòng package này cho khớp với project của mày
+package com.uet.agritech.security
 
 import com.uet.agritech.user.User
 import io.jsonwebtoken.Jwts

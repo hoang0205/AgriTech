@@ -85,6 +85,7 @@ class OrderController(
             ipAddress = ipAddress
         )
 
+        println("LINK VNPAY: $paymentUrl")
         return ResponseEntity.ok(mapOf("paymentUrl" to paymentUrl))
     }
 
@@ -97,5 +98,13 @@ class OrderController(
         orderRepository.save(order)
 
         return ResponseEntity.ok(mapOf("message" to "Cập nhật trạng thái thành công"))
+    }
+
+    @PutMapping("/{orderId}/cancel")
+    fun cancelOrderByBuyer(@PathVariable orderId: Long): ResponseEntity<OrderMessageResponse> {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+            ?: throw RuntimeException("Chưa đăng nhập")
+        orderService.cancelOrderByBuyer(orderId, phone)
+        return ResponseEntity.ok(OrderMessageResponse("Hủy đơn hàng thành công!"))
     }
 }

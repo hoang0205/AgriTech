@@ -33,7 +33,6 @@ class OrderService(
         }
 
         val cartItems = cartItemRepository.findAllById(request.selectedCartItemIds)
-
         if (cartItems.isEmpty()) {
             throw RuntimeException("Dữ liệu giỏ hàng không hợp lệ!")
         }
@@ -42,15 +41,18 @@ class OrderService(
             if (item.user.phoneNumber != userPhone) {
                 throw RuntimeException("Giỏ hàng không hợp lệ!")
             }
-        }
-
-        for (item in cartItems) {
             if (item.quantity > item.product.quantity) {
-                throw RuntimeException("Không đủ hàng cho sản phẩm")
+                throw RuntimeException("Không đủ hàng cho sản phẩm: ${item.product.name}")
             }
         }
 
         val totalAmount = cartItems.sumOf { it.product.price * it.quantity }
+
+        val initialStatus = if (request.paymentMethod.equals("VNPAY", ignoreCase = true)) {
+            "UNPAID"
+        } else {
+            OrderStatus.PENDING.name
+        }
 
         val newOrder = Order(
             user = user,
@@ -58,6 +60,7 @@ class OrderService(
             shippingAddress = request.shippingAddress,
             phoneNumber = request.phoneNumber
         )
+        newOrder.status = initialStatus
         val savedOrder = orderRepository.save(newOrder)
 
         val orderItems = cartItems.map { cartItem ->
@@ -75,7 +78,6 @@ class OrderService(
             )
         }
         orderItemRepository.saveAll(orderItems)
-
         cartItemRepository.deleteAll(cartItems)
         return savedOrder
     }
@@ -200,5 +202,29 @@ class OrderService(
         val counts = orderRepository.countOrdersByStatusForUser(user)
 
         return counts.associate { it.getStatus() to it.getCount() }
+    }
+
+    @Transactional
+    fun cancelOrderByBuyer(orderId: Long, buyerPhone: String) {
+        val order = orderRepository.findById(orderId)
+            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$orderId!") }
+
+        if (order.user.phoneNumber != buyerPhone) {
+            throw RuntimeException("Bạn không có quyền hủy đơn hàng này!")
+        }
+
+        if (order.status != "PENDING" && order.status != "UNPAID") {
+            throw RuntimeException("Đơn hàng đang ở trạng thái '${order.status}', không thể tự hủy!")
+        }
+
+        val orderItems = orderItemRepository.findAllByOrder(order)
+        for (item in orderItems) {
+            val product = item.product
+            product.quantity += item.quantity
+            productRepository.save(product)
+        }
+
+        order.status = OrderStatus.CANCELLED.name
+        orderRepository.save(order)
     }
 }
