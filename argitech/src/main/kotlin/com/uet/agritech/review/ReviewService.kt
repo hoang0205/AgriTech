@@ -11,13 +11,15 @@ import org.springframework.data.domain.Pageable // Import Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import kotlin.concurrent.thread
 import kotlin.math.round // Import hàm làm tròn số
 
 @Service
 class ReviewService(
     private val reviewRepository: ReviewRepository,
     private val productRepository: ProductRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val aiServiceClient: AiServiceClient
 ) {
     @Transactional
     fun addReview(userId: String, dto: ReviewRequestDto): Review {
@@ -51,7 +53,43 @@ class ReviewService(
         product.rating = roundedRating
         productRepository.save(product)
 
+        if (totalReviews >= 3) {
+            val productId = product.id.toString()
+            val productName = product.name
+
+            thread {
+                triggerAiReviewSummary(productId, productName)
+            }
+        }
+
         return savedReview
+    }
+
+    private fun triggerAiReviewSummary(productId: String, productName: String) {
+        try {
+            val pageable = PageRequest.of(0, 15, Sort.by("createdAt").descending())
+            val recentReviews = reviewRepository.findByProductId(productId, pageable)
+
+            val validComments = recentReviews.content
+                .mapNotNull { it.comment }
+                .filter { it.isNotBlank() }
+
+            if (validComments.size >= 3) {
+                val aiResponse = aiServiceClient.summarizeReviews(productName, validComments)
+
+                if (aiResponse != null && aiResponse.success) {
+                    val currentProduct = productRepository.findById(productId).orElse(null)
+                    if (currentProduct != null) {
+                        currentProduct.aiPros = aiResponse.pros.joinToString("\n")
+                        currentProduct.aiCons = aiResponse.cons.joinToString("\n")
+                        productRepository.save(currentProduct)
+                        println("--> Đã cập nhật thành công đánh giá tổng quát cho sản phẩm: $productName")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            println("Lỗi trong quá trình chạy ngầm AI review summary: ${e.message}")
+        }
     }
 
     fun getReviewsOfProduct(productId: String, pageable: Pageable): Page<ReviewResponseDto> {

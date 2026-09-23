@@ -44,5 +44,11 @@ class Product(
     var rating: Double = 0.0,
 
     @Column(nullable = false)
-    var reviewCount: Int = 0
+    var reviewCount: Int = 0,
+
+    @Column(columnDefinition = "TEXT")
+    var aiPros: String? = null,
+
+    @Column(columnDefinition = "TEXT")
+    var aiCons: String? = null
 )

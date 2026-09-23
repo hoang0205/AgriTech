@@ -188,7 +188,9 @@ class ProductService(
             reviewCount = product.reviewCount,
             farmerId = product.farmer.id!!,
             farmerPhone = product.farmer.phoneNumber,
-            farmerAvatar = product.farmer.avatarUrl ?: ""
+            farmerAvatar = product.farmer.avatarUrl ?: "",
+            aiPros = product.aiPros,
+            aiCons = product.aiCons
         )
     }
 }

@@ -8,6 +8,7 @@ import com.uet.agritech.order.dto.FarmerOrderItemDTO
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderStatus
 import com.uet.agritech.product.ProductRepository
+import com.uet.agritech.review.ReviewRepository
 import com.uet.agritech.user.RecommendationService
 import com.uet.agritech.user.UserRepository
 import org.springframework.stereotype.Service
@@ -20,7 +21,8 @@ class OrderService(
     private val cartItemRepository: CartItemRepository,
     private val productRepository: ProductRepository,
     private val userRepository: UserRepository,
-    private val interactionService: RecommendationService
+    private val interactionService: RecommendationService,
+    private val reviewRepository: ReviewRepository
 ) {
 
     @Transactional
@@ -181,6 +183,11 @@ class OrderService(
                 shippingAddress = order.shippingAddress,
                 totalAmount = order.totalAmount,
                 items = orderItems.map { item ->
+                    val hasReviewed = reviewRepository.existsByProductIdAndUserId(
+                        productId = item.product.id!!,
+                        userId = user.phoneNumber
+                    )
+
                     BuyerOrderItemDTO(
                         productId = item.product.id!!,
                         productName = item.product.name,
@@ -188,7 +195,8 @@ class OrderService(
                         quantity = item.quantity,
                         unit = item.product.unit,
                         price = item.price,
-                        thumbnail = item.product.imageUrls.firstOrNull() ?: ""
+                        thumbnail = item.product.imageUrls.firstOrNull() ?: "",
+                        isReviewed = hasReviewed
                     )
                 }
             )

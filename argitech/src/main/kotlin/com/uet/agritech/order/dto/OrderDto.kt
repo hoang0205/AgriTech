@@ -60,7 +60,8 @@ data class BuyerOrderItemDTO(
     val quantity: Double,
     val unit: String,
     val price: Double,
-    val thumbnail: String
+    val thumbnail: String,
+    val isReviewed: Boolean = false
 )
 
 interface OrderStatusCount {
