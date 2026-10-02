@@ -1,6 +1,7 @@
 package com.uet.agritech.order
 
 import com.uet.agritech.cart.CartItemRepository
+import com.uet.agritech.notification.NotificationService
 import com.uet.agritech.order.dto.BuyerOrderItemDTO
 import com.uet.agritech.order.dto.BuyerOrderResponse
 import com.uet.agritech.order.dto.CheckoutRequest
@@ -22,7 +23,8 @@ class OrderService(
     private val productRepository: ProductRepository,
     private val userRepository: UserRepository,
     private val interactionService: RecommendationService,
-    private val reviewRepository: ReviewRepository
+    private val reviewRepository: ReviewRepository,
+    private val notificationService: NotificationService
 ) {
 
     @Transactional
@@ -81,6 +83,17 @@ class OrderService(
         }
         orderItemRepository.saveAll(orderItems)
         cartItemRepository.deleteAll(cartItems)
+
+        if (initialStatus == OrderStatus.PENDING.name) {
+            notificationService.sendOrderStatusNotification(
+                recipient = user,
+                orderId = savedOrder.id!!,
+                status = OrderStatus.PENDING.name,
+                title = "Đặt hàng thành công! (Mã #${savedOrder.id})",
+                body = "Đơn hàng của bạn đã được tiếp nhận và đang chờ người bán xác nhận."
+            )
+        }
+
         return savedOrder
     }
 
@@ -160,7 +173,38 @@ class OrderService(
         }
 
         order.status = newStatus.name
-        orderRepository.save(order)
+        val updatedOrder = orderRepository.save(order)
+
+        val (title, body) = when (newStatus) {
+            OrderStatus.CONFIRMED -> Pair(
+                "Đơn hàng #${updatedOrder.id} đã được xác nhận!",
+                "Người bán đang chuẩn bị hàng cho bạn."
+            )
+            OrderStatus.SHIPPING -> Pair(
+                "Đơn hàng #${updatedOrder.id} đang trên đường giao 🚚",
+                "Sản phẩm đang được vận chuyển đến địa chỉ của bạn. Chú ý điện thoại nhận hàng nhé!"
+            )
+            OrderStatus.COMPLETED -> Pair(
+                "Giao hàng thành công! 🎉",
+                "Đơn hàng #${updatedOrder.id} đã hoàn tất. Hãy chia sẻ cảm nhận đánh giá của bạn về sản phẩm nhé!"
+            )
+            OrderStatus.CANCELLED -> Pair(
+                "Đơn hàng #${updatedOrder.id} đã bị hủy",
+                "Đơn hàng của bạn đã bị hủy bởi người bán."
+            )
+            else -> Pair(
+                "Cập nhật đơn hàng #${updatedOrder.id}",
+                "Đơn hàng của bạn đã chuyển sang trạng thái: ${newStatus.name}"
+            )
+        }
+
+        notificationService.sendOrderStatusNotification(
+            recipient = updatedOrder.user,
+            orderId = updatedOrder.id!!,
+            status = newStatus.name,
+            title = title,
+            body = body
+        )
     }
 
     fun getMyOrders(buyerPhone: String, status: String? = null): List<BuyerOrderResponse> {
