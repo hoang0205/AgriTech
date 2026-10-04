@@ -3,6 +3,7 @@ package com.uet.agritech.product
 import com.uet.agritech.product.dto.ProductRequest
 import com.uet.agritech.product.dto.ProductResponse
 import com.uet.agritech.user.RecommendationService
+import org.springframework.data.domain.Page
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.GetMapping
@@ -75,5 +76,15 @@ class ProductController(
         val phone = SecurityContextHolder.getContext().authentication?.name
         val recommendations = recommendationService.getMixedRecommendations(phone.toString(), limit)
         return ResponseEntity.ok(recommendations)
+    }
+
+    @GetMapping("/farmer/{farmerId}")
+    fun getProductsByFarmer(
+        @PathVariable farmerId: String,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "10") size: Int
+    ): ResponseEntity<Page<ProductResponse>> {
+        val products = productService.getProductsByFarmerId(farmerId, page, size)
+        return ResponseEntity.ok(products)
     }
 }

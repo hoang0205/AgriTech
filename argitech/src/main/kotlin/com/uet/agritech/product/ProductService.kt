@@ -193,4 +193,28 @@ class ProductService(
             aiCons = product.aiCons
         )
     }
+
+    fun getProductsByFarmerId(farmerId: String, page: Int, size: Int): Page<ProductResponse> {
+        val pageable = PageRequest.of(page, size, Sort.by("id").descending())
+        val productPage = productRepository.findByFarmerId(farmerId, pageable)
+
+        return productPage.map { product ->
+            ProductResponse(
+                id = product.id!!,
+                name = product.name,
+                category = product.category,
+                price = product.price,
+                quantity = product.quantity,
+                unit = product.unit,
+                description = product.description,
+                imageUrls = product.imageUrls,
+                farmerName = product.farmer.fullName,
+                rating = product.rating,
+                reviewCount = product.reviewCount,
+                farmerId = product.farmer.id!!,
+                farmerPhone = product.farmer.phoneNumber,
+                farmerAvatar = product.farmer.avatarUrl ?: ""
+            )
+        }
+    }
 }

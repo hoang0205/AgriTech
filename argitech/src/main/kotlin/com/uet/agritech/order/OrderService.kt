@@ -94,6 +94,22 @@ class OrderService(
             )
         }
 
+        val sellers = orderItems.map { it.product.farmer }.distinctBy { it.id }
+        val buyerDisplayName = user.fullName.ifBlank { user.phoneNumber }
+
+        for (seller in sellers) {
+            val sellerItems = orderItems.filter { it.product.farmer.id == seller.id }
+            val itemsSummary = sellerItems.joinToString(", ") { "${it.product.name} (x${it.quantity})" }
+
+            notificationService.sendOrderStatusNotification(
+                recipient = seller,
+                orderId = savedOrder.id!!,
+                status = "NEW_ORDER_SELLER",
+                title = "Bạn có đơn hàng mới! (Mã #${savedOrder.id})",
+                body = "Khách hàng $buyerDisplayName vừa đặt mua: $itemsSummary. Vui lòng xác nhận đơn hàng!"
+            )
+        }
+
         return savedOrder
     }
 

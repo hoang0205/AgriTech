@@ -9,7 +9,7 @@ import org.springframework.stereotype.Repository
 @Repository
 interface ProductRepository : JpaRepository<Product, String> {
 
-    fun findByFarmerId(farmerId: String): List<Product>
+    fun findByFarmerId(farmerId: String, pageable: Pageable): Page<Product>
 
     fun findByCategory(category: String, pageable: Pageable): Page<Product>
 
