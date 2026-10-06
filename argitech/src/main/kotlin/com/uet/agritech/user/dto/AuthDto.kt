@@ -38,7 +38,8 @@ data class VerifyEmailRequest(
 
 data class ResetPasswordRequest(
     val email: String,
-    val newPassword: String
+    val newPassword: String,
+    val otp: String
 )
 
 data class ErrorResponse(

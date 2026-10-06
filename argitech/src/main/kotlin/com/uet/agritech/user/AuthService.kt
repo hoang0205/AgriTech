@@ -88,9 +88,29 @@ class AuthService(
         val user = userRepository.findByEmail(request.email)
             .orElseThrow { RuntimeException("Email không tồn tại!") }
 
+        val storedOtp = user.resetOtp
+        val expiryTime = user.otpExpiryTime
+
+        if (request.otp.isBlank() ||
+            storedOtp.isNullOrBlank() ||
+            storedOtp != request.otp
+        ) {
+            throw RuntimeException("OTP không hợp lệ!")
+        }
+
+        if (expiryTime == null || !expiryTime.after(Date())) {
+            throw RuntimeException("OTP đã hết hạn!")
+        }
+
+        if (request.newPassword.isBlank()) {
+            throw RuntimeException("Mật khẩu mới không được để trống!")
+        }
+
         user.password = passwordEncoder.encode(request.newPassword).toString()
+
         user.resetOtp = null
         user.otpExpiryTime = null
+
         userRepository.save(user)
 
         return MessageResponse("Đổi mật khẩu thành công!")

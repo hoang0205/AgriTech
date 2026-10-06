@@ -4,6 +4,7 @@ import com.uet.agritech.order.dto.BuyerOrderResponse
 import com.uet.agritech.order.dto.CheckoutRequest
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderMessageResponse
+import com.uet.agritech.order.dto.RevenueSummaryDto
 import com.uet.agritech.order.dto.UpdateOrderStatusRequest
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
@@ -90,14 +91,14 @@ class OrderController(
     }
 
     @PutMapping("/{id}/mark-as-paid")
-    fun markOrderAsPaid(@PathVariable id: Long): ResponseEntity<Map<String, String>> {
-        val order = orderRepository.findById(id)
-            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$id") }
-
-        order.status = "PAID"
-        orderRepository.save(order)
-
-        return ResponseEntity.ok(mapOf("message" to "Cập nhật trạng thái thành công"))
+    fun markOrderAsPaid(
+        @PathVariable id: Long
+    ): ResponseEntity<Map<String, String>> {
+        return ResponseEntity.status(403).body(
+            mapOf(
+                "message" to "Chức năng xác nhận thanh toán online đang tạm khóa."
+            )
+        )
     }
 
     @PutMapping("/{orderId}/cancel")
@@ -106,5 +107,20 @@ class OrderController(
             ?: throw RuntimeException("Chưa đăng nhập")
         orderService.cancelOrderByBuyer(orderId, phone)
         return ResponseEntity.ok(OrderMessageResponse("Hủy đơn hàng thành công!"))
+    }
+
+    @RestController
+    @RequestMapping("/api/statistics")
+    class StatisticController(
+        private val orderService: OrderService
+    ) {
+        @GetMapping("/revenue")
+        fun getRevenueSummary(): ResponseEntity<RevenueSummaryDto> {
+            val farmerPhone = SecurityContextHolder.getContext().authentication?.name
+                ?: throw RuntimeException("Người dùng chưa đăng nhập!")
+
+            val summary = orderService.getFarmerRevenue(farmerPhone)
+            return ResponseEntity.ok(summary)
+        }
     }
 }

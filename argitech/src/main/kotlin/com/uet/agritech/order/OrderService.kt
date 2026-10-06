@@ -8,6 +8,7 @@ import com.uet.agritech.order.dto.CheckoutRequest
 import com.uet.agritech.order.dto.FarmerOrderItemDTO
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderStatus
+import com.uet.agritech.order.dto.RevenueSummaryDto
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.review.ReviewRepository
 import com.uet.agritech.user.RecommendationService
@@ -294,5 +295,19 @@ class OrderService(
 
         order.status = OrderStatus.CANCELLED.name
         orderRepository.save(order)
+    }
+
+    fun getFarmerRevenue(farmerPhone: String): RevenueSummaryDto {
+        val farmer = userRepository.findByPhoneNumber(farmerPhone)
+            .orElseThrow { RuntimeException("User không tồn tại") }
+
+        val totalRevenue = orderItemRepository.getTotalRevenueByFarmer(farmer) ?: 0.0
+
+        val categoryRevenues = orderItemRepository.getRevenueByCategory(farmer)
+
+        return RevenueSummaryDto(
+            totalRevenue = totalRevenue,
+            categoryRevenues = categoryRevenues
+        )
     }
 }

@@ -64,6 +64,16 @@ data class BuyerOrderItemDTO(
     val isReviewed: Boolean = false
 )
 
+data class CategoryRevenueDto(
+    val category: String,
+    val revenue: Double
+)
+
+data class RevenueSummaryDto(
+    val totalRevenue: Double,
+    val categoryRevenues: List<CategoryRevenueDto>
+)
+
 interface OrderStatusCount {
     fun getStatus(): String
     fun getCount(): Long

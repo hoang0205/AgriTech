@@ -1,5 +1,6 @@
 package com.uet.agritech.order
 
+import com.uet.agritech.order.dto.CategoryRevenueDto
 import com.uet.agritech.product.Product
 import com.uet.agritech.user.User
 import org.springframework.data.domain.Pageable
@@ -23,4 +24,21 @@ interface OrderItemRepository : JpaRepository<OrderItem, Long> {
         ORDER BY freq DESC
     """)
     fun findFrequentlyBoughtTogether(currentProduct: Product, pageable: Pageable): List<Array<Any>>
+
+    @Query("""
+        SELECT SUM(oi.quantity * oi.price) 
+        FROM OrderItem oi 
+        WHERE oi.product.farmer = :farmer 
+        AND oi.order.status = 'COMPLETED'
+    """)
+    fun getTotalRevenueByFarmer(farmer: User): Double?
+
+    @Query("""
+        SELECT new com.uet.agritech.order.dto.CategoryRevenueDto(oi.product.category, SUM(oi.quantity * oi.price))
+        FROM OrderItem oi 
+        WHERE oi.product.farmer = :farmer 
+        AND oi.order.status = 'COMPLETED'
+        GROUP BY oi.product.category
+    """)
+    fun getRevenueByCategory(farmer: User): List<CategoryRevenueDto>
 }
