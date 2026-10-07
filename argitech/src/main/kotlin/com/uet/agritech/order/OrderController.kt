@@ -19,14 +19,27 @@ class OrderController(
 ) {
 
     @PostMapping("/checkout")
-    fun checkout(@RequestBody request: CheckoutRequest): ResponseEntity<OrderMessageResponse> {
-        val phone = SecurityContextHolder.getContext().authentication?.name
-        val createdOrder = orderService.checkout(request, phone.toString())
+    fun checkout(
+        @RequestBody request: CheckoutRequest
+    ): ResponseEntity<OrderMessageResponse> {
+        val phone = SecurityContextHolder.getContext()
+            .authentication?.name
+            ?: throw RuntimeException("Chưa đăng nhập")
+
+        val createdOrders = orderService.checkout(request, phone)
+        val orderIds = createdOrders.map { it.id!! }
+
+        val message = if (orderIds.size == 1) {
+            "Đặt hàng thành công!"
+        } else {
+            "Đặt hàng thành công! Đã tạo ${orderIds.size} đơn theo người bán."
+        }
 
         return ResponseEntity.ok(
             OrderMessageResponse(
-                message = "Đặt hàng thành công!",
-                orderId = createdOrder.id
+                message = message,
+                orderId = orderIds.singleOrNull(),
+                orderIds = orderIds
             )
         )
     }

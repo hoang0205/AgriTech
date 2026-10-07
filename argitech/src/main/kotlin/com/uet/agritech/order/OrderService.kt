@@ -29,7 +29,10 @@ class OrderService(
 ) {
 
     @Transactional
-    fun checkout(request: CheckoutRequest, userPhone: String): Order {
+    fun checkout(
+        request: CheckoutRequest,
+        userPhone: String
+    ): List<Order> {
         val user = userRepository.findByPhoneNumber(userPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
 
@@ -37,81 +40,125 @@ class OrderService(
             throw RuntimeException("Bạn chưa chọn món nào để thanh toán!")
         }
 
-        val cartItems = cartItemRepository.findAllById(request.selectedCartItemIds)
-        if (cartItems.isEmpty()) {
-            throw RuntimeException("Dữ liệu giỏ hàng không hợp lệ!")
+        val selectedIds = request.selectedCartItemIds.distinct()
+        val cartItems = cartItemRepository.findAllById(selectedIds)
+
+        if (cartItems.isEmpty() || cartItems.size != selectedIds.size) {
+            throw RuntimeException(
+                "Giỏ hàng đã thay đổi. Vui lòng tải lại trước khi đặt hàng!"
+            )
         }
 
         for (item in cartItems) {
             if (item.user.phoneNumber != userPhone) {
                 throw RuntimeException("Giỏ hàng không hợp lệ!")
             }
+
+            if (!item.quantity.isFinite() || item.quantity <= 0.0) {
+                throw RuntimeException("Số lượng sản phẩm không hợp lệ!")
+            }
+
             if (item.quantity > item.product.quantity) {
-                throw RuntimeException("Không đủ hàng cho sản phẩm: ${item.product.name}")
+                throw RuntimeException(
+                    "Không đủ hàng cho sản phẩm: ${item.product.name}"
+                )
             }
         }
 
-        val totalAmount = cartItems.sumOf { it.product.price * it.quantity }
+        val itemsBySeller = cartItems.groupBy {
+            it.product.farmer.phoneNumber
+        }
 
-        val initialStatus = if (request.paymentMethod.equals("VNPAY", ignoreCase = true)) {
+        val isVnpay = request.paymentMethod.equals(
+            "VNPAY",
+            ignoreCase = true
+        )
+
+        if (isVnpay && itemsBySeller.size > 1) {
+            throw RuntimeException(
+                "Đơn nhiều người bán hiện chưa hỗ trợ VNPay. Vui lòng chọn COD."
+            )
+        }
+
+        val initialStatus = if (isVnpay) {
             "UNPAID"
         } else {
             OrderStatus.PENDING.name
         }
 
-        val newOrder = Order(
-            user = user,
-            totalAmount = totalAmount,
-            shippingAddress = request.shippingAddress,
-            phoneNumber = request.phoneNumber
-        )
-        newOrder.status = initialStatus
-        val savedOrder = orderRepository.save(newOrder)
-
-        val orderItems = cartItems.map { cartItem ->
-            val product = cartItem.product
-            product.quantity -= cartItem.quantity
-            productRepository.save(product)
-
-            interactionService.recordInteraction(userPhone, product, "PURCHASE", 5.0)
-
-            OrderItem(
-                order = savedOrder,
-                product = product,
-                quantity = cartItem.quantity,
-                price = product.price
-            )
-        }
-        orderItemRepository.saveAll(orderItems)
-        cartItemRepository.deleteAll(cartItems)
-
-        if (initialStatus == OrderStatus.PENDING.name) {
-            notificationService.sendOrderStatusNotification(
-                recipient = user,
-                orderId = savedOrder.id!!,
-                status = OrderStatus.PENDING.name,
-                title = "Đặt hàng thành công! (Mã #${savedOrder.id})",
-                body = "Đơn hàng của bạn đã được tiếp nhận và đang chờ người bán xác nhận."
-            )
+        val createdOrders = mutableListOf<Order>()
+        val buyerDisplayName = user.fullName.ifBlank {
+            user.phoneNumber
         }
 
-        val sellers = orderItems.map { it.product.farmer }.distinctBy { it.id }
-        val buyerDisplayName = user.fullName.ifBlank { user.phoneNumber }
+        for (sellerCartItems in itemsBySeller.values) {
+            val seller = sellerCartItems.first().product.farmer
 
-        for (seller in sellers) {
-            val sellerItems = orderItems.filter { it.product.farmer.id == seller.id }
-            val itemsSummary = sellerItems.joinToString(", ") { "${it.product.name} (x${it.quantity})" }
+            val sellerTotal = sellerCartItems.sumOf {
+                it.product.price * it.quantity
+            }
+
+            val newOrder = Order(
+                user = user,
+                totalAmount = sellerTotal,
+                shippingAddress = request.shippingAddress,
+                phoneNumber = request.phoneNumber
+            )
+            newOrder.status = initialStatus
+
+            val savedOrder = orderRepository.save(newOrder)
+
+            val orderItems = sellerCartItems.map { cartItem ->
+                val product = cartItem.product
+
+                product.quantity -= cartItem.quantity
+                productRepository.save(product)
+
+                interactionService.recordInteraction(
+                    userPhone,
+                    product,
+                    "PURCHASE",
+                    5.0
+                )
+
+                OrderItem(
+                    order = savedOrder,
+                    product = product,
+                    quantity = cartItem.quantity,
+                    price = product.price
+                )
+            }
+
+            orderItemRepository.saveAll(orderItems)
+            createdOrders.add(savedOrder)
+
+            if (initialStatus == OrderStatus.PENDING.name) {
+                notificationService.sendOrderStatusNotification(
+                    recipient = user,
+                    orderId = savedOrder.id!!,
+                    status = OrderStatus.PENDING.name,
+                    title = "Đặt hàng thành công! (Mã #${savedOrder.id})",
+                    body = "Đơn hàng của bạn đang chờ người bán xác nhận."
+                )
+            }
+
+            val itemsSummary = orderItems.joinToString(", ") {
+                "${it.product.name} (x${it.quantity})"
+            }
 
             notificationService.sendOrderStatusNotification(
                 recipient = seller,
                 orderId = savedOrder.id!!,
                 status = "NEW_ORDER_SELLER",
                 title = "Bạn có đơn hàng mới! (Mã #${savedOrder.id})",
-                body = "Khách hàng $buyerDisplayName vừa đặt mua: $itemsSummary. Vui lòng xác nhận đơn hàng!"
+                body = "Khách hàng $buyerDisplayName vừa đặt mua: " +
+                        "$itemsSummary. Vui lòng xác nhận đơn hàng!"
             )
         }
 
-        return savedOrder
+        cartItemRepository.deleteAll(cartItems)
+
+        return createdOrders
     }
 
     fun getOrdersForFarmer(farmerPhone: String): List<FarmerOrderResponse> {
@@ -152,12 +199,22 @@ class OrderService(
 
         val orderItems = orderItemRepository.findAllByOrder(order)
 
-        val isMyOrder = orderItems.any {
-            it.product.farmer.phoneNumber == sellerPhone
+        if (orderItems.isEmpty()) {
+            throw RuntimeException("Đơn hàng không có sản phẩm!")
         }
 
-        if (!isMyOrder) {
+        val sellerPhones = orderItems
+            .map { it.product.farmer.phoneNumber }
+            .toSet()
+
+        if (sellerPhone !in sellerPhones) {
             throw RuntimeException("Bạn không có quyền xử lý đơn hàng này!")
+        }
+
+        if (sellerPhones.size > 1) {
+            throw RuntimeException(
+                "Đơn hàng chứa sản phẩm của nhiều người bán, chưa thể cập nhật trạng thái. Vui lòng liên hệ hỗ trợ."
+            )
         }
 
         val currentStatus = try {

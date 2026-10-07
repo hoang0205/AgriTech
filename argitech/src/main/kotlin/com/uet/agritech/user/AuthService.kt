@@ -3,8 +3,11 @@ package com.uet.agritech.user
 import com.google.firebase.auth.FirebaseAuth
 import com.uet.agritech.security.JwtService
 import com.uet.agritech.user.dto.*
+import io.jsonwebtoken.ExpiredJwtException
+import io.jsonwebtoken.JwtException
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.*
 
 @Service
@@ -117,32 +120,63 @@ class AuthService(
     }
 
     fun refreshAccessToken(request: RefreshTokenRequest): LoginResponse {
-        if (jwtService.isTokenExpired(request.refreshToken)) {
-            throw RuntimeException("Refresh Token đã hết hạn, vui lòng đăng nhập lại!")
+        if (tokenBlacklistService.isTokenBlacklisted(request.refreshToken)) {
+            throw io.jsonwebtoken.JwtException(
+                "Phiên đăng nhập đã kết thúc"
+            )
         }
 
-        val phoneNumber = jwtService.extractPhoneNumber(request.refreshToken)
-        val user = userRepository.findByPhoneNumber(phoneNumber)
-            .orElseThrow { RuntimeException("Người dùng không tồn tại!") }
+        val phoneNumber = jwtService.extractPhoneNumberForType(
+            request.refreshToken,
+            "REFRESH"
+        )
 
-        val newAccessToken = jwtService.generateAccessToken(user)
-        val newRefreshToken = jwtService.generateRefreshToken(user)
+        val user = userRepository.findByPhoneNumber(phoneNumber)
+            .orElseThrow {
+                io.jsonwebtoken.JwtException(
+                    "Phiên đăng nhập không hợp lệ"
+                )
+            }
 
         return LoginResponse(
-            accessToken = newAccessToken,
-            refreshToken = newRefreshToken,
+            accessToken = jwtService.generateAccessToken(user),
+            refreshToken = jwtService.generateRefreshToken(user),
             fullName = user.fullName,
             avatarUrl = user.avatarUrl
         )
     }
 
+    @Transactional
     fun logout(request: LogoutRequest): LogoutResponse {
-        try {
-            tokenBlacklistService.blacklistToken(request.accessToken)
-            return LogoutResponse("Đăng xuất thành công!")
-        } catch (e: Exception) {
-            throw RuntimeException("Lỗi đăng xuất: ${e.message}")
+        val refreshPhone = jwtService.extractPhoneNumberForType(
+            request.refreshToken,
+            "REFRESH"
+        )
+
+        val accessPhone = try {
+            jwtService.extractPhoneNumberForType(
+                request.accessToken,
+                "ACCESS"
+            )
+        } catch (e: ExpiredJwtException) {
+            if (e.claims["token_type"] != "ACCESS") {
+                throw JwtException(
+                    "Loại token không hợp lệ"
+                )
+            }
+            e.claims.subject
         }
+
+        if (accessPhone != refreshPhone) {
+            throw JwtException(
+                "Hai token không thuộc cùng tài khoản"
+            )
+        }
+
+        tokenBlacklistService.blacklistToken(request.refreshToken)
+        tokenBlacklistService.blacklistToken(request.accessToken)
+
+        return LogoutResponse("Đăng xuất thành công!")
     }
 
     private fun createFirebaseToken(userId: String?): String? {

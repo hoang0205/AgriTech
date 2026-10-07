@@ -20,6 +20,7 @@ class JwtService {
     fun generateAccessToken(user: User): String {
         return Jwts.builder()
             .subject(user.phoneNumber)
+            .claim("token_type", "ACCESS")
             .claim("role", user.role.name)
             .claim("userId", user.id)
             .issuedAt(Date(System.currentTimeMillis()))
@@ -31,6 +32,7 @@ class JwtService {
     fun generateRefreshToken(user: User): String {
         return Jwts.builder()
             .subject(user.phoneNumber)
+            .claim("token_type", "REFRESH")
             .issuedAt(Date(System.currentTimeMillis()))
             .expiration(Date(System.currentTimeMillis() + 1000L * 60 * 60 * 24 * 7))
             .signWith(getSignInKey())
@@ -40,6 +42,19 @@ class JwtService {
     fun extractPhoneNumber(token: String): String {
         return Jwts.parser()
             .verifyWith(getSignInKey())
+            .build()
+            .parseSignedClaims(token)
+            .payload
+            .subject
+    }
+
+    fun extractPhoneNumberForType(
+        token: String,
+        expectedType: String
+    ): String {
+        return Jwts.parser()
+            .verifyWith(getSignInKey())
+            .require("token_type", expectedType)
             .build()
             .parseSignedClaims(token)
             .payload

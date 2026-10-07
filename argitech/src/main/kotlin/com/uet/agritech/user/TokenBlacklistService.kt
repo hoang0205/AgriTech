@@ -11,18 +11,20 @@ class TokenBlacklistService(
 ) {
 
     fun blacklistToken(token: String) {
+        if (isTokenBlacklisted(token)) return
+
         try {
             val phoneNumber = jwtService.extractPhoneNumber(token)
             val expirationTime = jwtService.getTokenExpiration(token)
 
-            val blacklistedToken = TokenBlacklist(
-                token = token,
-                phoneNumber = phoneNumber,
-                expiresAt = expirationTime
+            tokenBlacklistRepository.save(
+                TokenBlacklist(
+                    token = token,
+                    phoneNumber = phoneNumber,
+                    expiresAt = expirationTime
+                )
             )
-            tokenBlacklistRepository.save(blacklistedToken)
-        } catch (e: Exception) {
-            throw RuntimeException("Không thể thêm token vào blacklist: ${e.message}")
+        } catch (_: io.jsonwebtoken.ExpiredJwtException) {
         }
     }
 

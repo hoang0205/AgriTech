@@ -57,7 +57,8 @@ data class RefreshTokenRequest(
 )
 
 data class LogoutRequest(
-    val accessToken: String
+    val accessToken: String,
+    val refreshToken: String
 )
 
 data class LogoutResponse(

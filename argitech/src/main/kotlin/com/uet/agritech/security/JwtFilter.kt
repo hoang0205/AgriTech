@@ -37,7 +37,10 @@ class JwtFilter(
                 return
             }
 
-            val phoneNumber = jwtService.extractPhoneNumber(jwt)
+            val phoneNumber = jwtService.extractPhoneNumberForType(
+                jwt,
+                "ACCESS"
+            )
 
             if (phoneNumber != null && SecurityContextHolder.getContext().authentication == null) {
 

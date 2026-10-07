@@ -17,4 +17,16 @@ class GlobalExceptionHandler {
         )
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorResponse)
     }
+
+    @ExceptionHandler(io.jsonwebtoken.JwtException::class)
+    fun handleJwtException(
+        ex: io.jsonwebtoken.JwtException
+    ): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(
+            ErrorResponse(
+                status = 401,
+                message = "Phiên đăng nhập không hợp lệ hoặc đã hết hạn"
+            )
+        )
+    }
 }
