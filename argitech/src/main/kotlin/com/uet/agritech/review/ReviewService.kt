@@ -5,12 +5,16 @@ import com.uet.agritech.review.dto.ReviewRequestDto
 import com.uet.agritech.review.dto.ReviewResponseDto
 import com.uet.agritech.review.dto.ReviewSummaryDto
 import com.uet.agritech.user.UserRepository // Import UserRepository
+import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.core.task.TaskExecutor
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable // Import Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.transaction.support.TransactionSynchronization
+import org.springframework.transaction.support.TransactionSynchronizationManager
 import kotlin.concurrent.thread
 import kotlin.math.round // Import hàm làm tròn số
 
@@ -19,7 +23,9 @@ class ReviewService(
     private val reviewRepository: ReviewRepository,
     private val productRepository: ProductRepository,
     private val userRepository: UserRepository,
-    private val aiServiceClient: AiServiceClient
+    private val aiServiceClient: AiServiceClient,
+    @Qualifier("aiSummaryExecutor")
+    private val aiSummaryExecutor: TaskExecutor
 ) {
     @Transactional
     fun addReview(userId: String, dto: ReviewRequestDto): Review {
@@ -57,9 +63,15 @@ class ReviewService(
             val productId = product.id.toString()
             val productName = product.name
 
-            thread {
-                triggerAiReviewSummary(productId, productName)
-            }
+            TransactionSynchronizationManager.registerSynchronization(
+                object : TransactionSynchronization {
+                    override fun afterCommit() {
+                        aiSummaryExecutor.execute {
+                            triggerAiReviewSummary(productId, productName)
+                        }
+                    }
+                }
+            )
         }
 
         return savedReview

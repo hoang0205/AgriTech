@@ -18,3 +18,13 @@ data class ProductReportResponse(
     val adminReply: String?,
     val createdAt: String
 )
+
+data class UpdateProductReportRequest(
+    val status: ReportStatus,
+    val adminReply: String? = null
+)
+
+data class ReportEligibilityResponse(
+    val canReport: Boolean,
+    val message: String? = null
+)

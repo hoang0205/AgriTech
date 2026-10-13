@@ -54,4 +54,22 @@ class UserController(
         userService.updateFcmToken(authHeader, token)
         return ResponseEntity.ok(mapOf("message" to "Cập nhật FCM Token thành công"))
     }
+
+    @GetMapping("/session")
+    fun getSession(
+        principal: java.security.Principal
+    ): Map<String, String> {
+        val user = userRepository.findByPhoneNumber(principal.name)
+            .orElseThrow {
+                org.springframework.web.server.ResponseStatusException(
+                    org.springframework.http.HttpStatus.UNAUTHORIZED,
+                    "Tài khoản không tồn tại"
+                )
+            }
+
+        return mapOf(
+            "user_id" to requireNotNull(user.id),
+            "role" to user.role.name
+        )
+    }
 }

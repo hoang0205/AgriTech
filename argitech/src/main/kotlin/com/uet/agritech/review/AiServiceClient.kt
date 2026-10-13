@@ -1,8 +1,10 @@
 package com.uet.agritech.review
 
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.HttpEntity
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestTemplate
 
@@ -19,22 +21,38 @@ data class AiReviewSummarizeResponse(
 )
 
 @Service
-class AiServiceClient {
-    private val restTemplate = RestTemplate()
-    private val aiServerUrl = "http://localhost:8000/api/summarize-reviews"
+class AiServiceClient(
+    @Value("\${ai.base-url}") private val aiBaseUrl: String
+) {
+    private val restTemplate = RestTemplate(
+        SimpleClientHttpRequestFactory().apply {
+            setConnectTimeout(5_000)
+            setReadTimeout(240_000)
+        }
+    )
 
-    fun summarizeReviews(productName: String, reviews: List<String>): AiReviewSummarizeResponse? {
+    private val aiServerUrl =
+        "${aiBaseUrl.trimEnd('/')}/api/summarize-reviews"
+
+    fun summarizeReviews(
+        productName: String,
+        reviews: List<String>
+    ): AiReviewSummarizeResponse? {
         val payload = AiReviewSummarizeRequest(
             product_name = productName,
             reviews = reviews
         )
+
         val headers = HttpHeaders().apply {
             contentType = MediaType.APPLICATION_JSON
         }
-        val entity = HttpEntity(payload, headers)
 
         return try {
-            restTemplate.postForObject(aiServerUrl, entity, AiReviewSummarizeResponse::class.java)
+            restTemplate.postForObject(
+                aiServerUrl,
+                HttpEntity(payload, headers),
+                AiReviewSummarizeResponse::class.java
+            )
         } catch (e: Exception) {
             println("Lỗi gọi sang FastAPI Service: ${e.message}")
             null

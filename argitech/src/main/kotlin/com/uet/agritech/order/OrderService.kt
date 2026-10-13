@@ -9,10 +9,13 @@ import com.uet.agritech.order.dto.FarmerOrderItemDTO
 import com.uet.agritech.order.dto.FarmerOrderResponse
 import com.uet.agritech.order.dto.OrderStatus
 import com.uet.agritech.order.dto.RevenueSummaryDto
+import com.uet.agritech.product.Product
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.review.ReviewRepository
 import com.uet.agritech.user.RecommendationService
 import com.uet.agritech.user.UserRepository
+import jakarta.persistence.EntityManager
+import jakarta.persistence.LockModeType
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -25,7 +28,8 @@ class OrderService(
     private val userRepository: UserRepository,
     private val interactionService: RecommendationService,
     private val reviewRepository: ReviewRepository,
-    private val notificationService: NotificationService
+    private val notificationService: NotificationService,
+    private val entityManager: EntityManager
 ) {
 
     @Transactional
@@ -40,8 +44,8 @@ class OrderService(
             throw RuntimeException("Bạn chưa chọn món nào để thanh toán!")
         }
 
-        val selectedIds = request.selectedCartItemIds.distinct()
-        val cartItems = cartItemRepository.findAllById(selectedIds)
+        val selectedIds = request.selectedCartItemIds.distinct().sorted()
+        val cartItems = cartItemRepository.findAllForCheckout(selectedIds)
 
         if (cartItems.isEmpty() || cartItems.size != selectedIds.size) {
             throw RuntimeException(
@@ -50,6 +54,8 @@ class OrderService(
         }
 
         for (item in cartItems) {
+            entityManager.refresh(item, LockModeType.PESSIMISTIC_WRITE)
+
             if (item.user.phoneNumber != userPhone) {
                 throw RuntimeException("Giỏ hàng không hợp lệ!")
             }
@@ -57,16 +63,32 @@ class OrderService(
             if (!item.quantity.isFinite() || item.quantity <= 0.0) {
                 throw RuntimeException("Số lượng sản phẩm không hợp lệ!")
             }
+        }
 
-            if (item.quantity > item.product.quantity) {
+        val products = lockProducts(
+            cartItems.map { requireNotNull(it.product.id) }
+        )
+
+        val quantitiesByProduct = cartItems
+            .groupBy { requireNotNull(it.product.id) }
+            .mapValues { (_, items) -> items.sumOf { it.quantity } }
+
+        for ((productId, quantity) in quantitiesByProduct) {
+            val product = products.getValue(productId)
+
+            if (
+                !quantity.isFinite() ||
+                !product.quantity.isFinite() ||
+                quantity > product.quantity
+            ) {
                 throw RuntimeException(
-                    "Không đủ hàng cho sản phẩm: ${item.product.name}"
+                    "Không đủ hàng cho sản phẩm: ${product.name}"
                 )
             }
         }
 
         val itemsBySeller = cartItems.groupBy {
-            it.product.farmer.phoneNumber
+            products.getValue(requireNotNull(it.product.id)).farmer.phoneNumber
         }
 
         val isVnpay = request.paymentMethod.equals(
@@ -92,10 +114,12 @@ class OrderService(
         }
 
         for (sellerCartItems in itemsBySeller.values) {
-            val seller = sellerCartItems.first().product.farmer
+            val seller = products.getValue(
+                requireNotNull(sellerCartItems.first().product.id)
+            ).farmer
 
             val sellerTotal = sellerCartItems.sumOf {
-                it.product.price * it.quantity
+                products.getValue(requireNotNull(it.product.id)).price * it.quantity
             }
 
             val newOrder = Order(
@@ -109,7 +133,7 @@ class OrderService(
             val savedOrder = orderRepository.save(newOrder)
 
             val orderItems = sellerCartItems.map { cartItem ->
-                val product = cartItem.product
+                val product = products.getValue(requireNotNull(cartItem.product.id))
 
                 product.quantity -= cartItem.quantity
                 productRepository.save(product)
@@ -161,6 +185,34 @@ class OrderService(
         return createdOrders
     }
 
+    private fun lockProducts(productIds: List<String>): Map<String, Product> {
+        return productIds.distinct().sorted().associateWith { productId ->
+            val product = productRepository.findForStockUpdate(productId)
+                .orElseThrow {
+                    RuntimeException("Sản phẩm không còn tồn tại: $productId")
+                }
+
+            entityManager.refresh(product, LockModeType.PESSIMISTIC_WRITE)
+            product
+        }
+    }
+
+    private fun restoreStock(orderItems: List<OrderItem>) {
+        val products = lockProducts(
+            orderItems.map { requireNotNull(it.product.id) }
+        )
+
+        val quantities = orderItems
+            .groupBy { requireNotNull(it.product.id) }
+            .mapValues { (_, items) -> items.sumOf { it.quantity } }
+
+        for ((productId, quantity) in quantities) {
+            val product = products.getValue(productId)
+            product.quantity += quantity
+            productRepository.save(product)
+        }
+    }
+
     fun getOrdersForFarmer(farmerPhone: String): List<FarmerOrderResponse> {
         val farmer = userRepository.findByPhoneNumber(farmerPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
@@ -194,8 +246,10 @@ class OrderService(
 
     @Transactional
     fun updateStatus(orderId: Long, newStatus: OrderStatus, sellerPhone: String) {
-        val order = orderRepository.findById(orderId)
+        val order = orderRepository.findForStatusUpdate(orderId)
             .orElseThrow { RuntimeException("Không tìm thấy đơn hàng!") }
+
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE)
 
         val orderItems = orderItemRepository.findAllByOrder(order)
 
@@ -239,11 +293,7 @@ class OrderService(
         }
 
         if (newStatus == OrderStatus.CANCELLED) {
-            for (item in orderItems) {
-                val product = item.product
-                product.quantity += item.quantity
-                productRepository.save(product)
-            }
+            restoreStock(orderItems)
         }
 
         order.status = newStatus.name
@@ -332,8 +382,12 @@ class OrderService(
 
     @Transactional
     fun cancelOrderByBuyer(orderId: Long, buyerPhone: String) {
-        val order = orderRepository.findById(orderId)
-            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$orderId!") }
+        val order = orderRepository.findForStatusUpdate(orderId)
+            .orElseThrow {
+                RuntimeException("Không tìm thấy đơn hàng #$orderId!")
+            }
+
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE)
 
         if (order.user.phoneNumber != buyerPhone) {
             throw RuntimeException("Bạn không có quyền hủy đơn hàng này!")
@@ -344,11 +398,7 @@ class OrderService(
         }
 
         val orderItems = orderItemRepository.findAllByOrder(order)
-        for (item in orderItems) {
-            val product = item.product
-            product.quantity += item.quantity
-            productRepository.save(product)
-        }
+        restoreStock(orderItems)
 
         order.status = OrderStatus.CANCELLED.name
         orderRepository.save(order)

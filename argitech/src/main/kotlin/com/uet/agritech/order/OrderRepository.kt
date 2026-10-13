@@ -2,8 +2,11 @@ package com.uet.agritech.order
 
 import com.uet.agritech.order.dto.OrderStatusCount
 import com.uet.agritech.user.User
+import jakarta.persistence.LockModeType
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 @Repository
@@ -16,4 +19,10 @@ interface OrderRepository : JpaRepository<Order, Long> {
 
     @Query("SELECT o.status AS status, COUNT(o) AS count FROM Order o WHERE o.user = :user GROUP BY o.status")
     fun countOrdersByStatusForUser(user: User): List<OrderStatusCount>
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select o from Order o where o.id = :id")
+    fun findForStatusUpdate(
+        @Param("id") id: Long
+    ): java.util.Optional<Order>
 }

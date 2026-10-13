@@ -19,6 +19,17 @@ class ProductReportController(
         )
     }
 
+    @GetMapping("/products/{productId}/eligibility")
+    fun eligibility(
+        authentication: Authentication,
+        @PathVariable("productId") productId: String
+    ): ReportEligibilityResponse {
+        return reportService.eligibility(
+            authentication.name,
+            productId
+        )
+    }
+
     @GetMapping("/mine")
     fun getMine(
         authentication: Authentication,
@@ -39,6 +50,15 @@ class AdminReportController(
     @GetMapping
     fun getAll(
         @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "10") size: Int
-    ) = reportService.getAll(page, size)
+        @RequestParam(defaultValue = "10") size: Int,
+        @RequestParam(required = false) status: ReportStatus? = null
+    ) = reportService.getAll(page, size, status)
+
+    @PatchMapping("/{id}")
+    fun update(
+        @PathVariable("id") id: Long,
+        @RequestBody request: UpdateProductReportRequest
+    ): ProductReportResponse {
+        return reportService.update(id, request)
+    }
 }

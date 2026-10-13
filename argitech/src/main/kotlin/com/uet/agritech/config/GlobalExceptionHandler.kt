@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.server.ResponseStatusException
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
@@ -26,6 +27,18 @@ class GlobalExceptionHandler {
             ErrorResponse(
                 status = 401,
                 message = "Phiên đăng nhập không hợp lệ hoặc đã hết hạn"
+            )
+        )
+    }
+
+    @ExceptionHandler(ResponseStatusException::class)
+    fun handleResponseStatusException(
+        ex: ResponseStatusException
+    ): ResponseEntity<ErrorResponse> {
+        return ResponseEntity.status(ex.statusCode).body(
+            ErrorResponse(
+                status = ex.statusCode.value(),
+                message = ex.reason ?: "Yêu cầu không hợp lệ"
             )
         )
     }

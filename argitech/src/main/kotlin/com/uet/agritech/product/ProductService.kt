@@ -3,13 +3,16 @@ package com.uet.agritech.product
 import com.uet.agritech.product.dto.ProductRequest
 import com.uet.agritech.product.dto.ProductResponse
 import com.uet.agritech.user.RecommendationService
+import com.uet.agritech.user.Role
 import com.uet.agritech.user.UserRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.http.HttpStatus
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ProductService(
@@ -18,39 +21,98 @@ class ProductService(
     private val interactionService: RecommendationService
 ) {
 
+    @Transactional
     fun createProduct(request: ProductRequest): ProductResponse {
         val authentication = SecurityContextHolder.getContext().authentication
-        val phoneNumber = authentication?.name
 
-        val farmer = userRepository.findByPhoneNumber(phoneNumber)
-            .orElseThrow { RuntimeException("Không tìm thấy thông tin người dùng!") }
+        if (authentication == null ||
+            !authentication.isAuthenticated ||
+            authentication.name == "anonymousUser"
+        ) {
+            throw ResponseStatusException(
+                HttpStatus.UNAUTHORIZED,
+                "Bạn cần đăng nhập"
+            )
+        }
+
+        val farmer = userRepository.findByPhoneNumber(authentication.name)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Tài khoản không tồn tại"
+                )
+            }
+
+        if (farmer.role != Role.FARMER && farmer.role != Role.ADMIN) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Tài khoản không có quyền đăng bán sản phẩm"
+            )
+        }
+
+        val name = request.name.trim()
+        val category = request.category.trim()
+        val unit = request.unit.trim()
+
+        require(name.isNotBlank() && name.length <= 255) {
+            "Tên sản phẩm phải có từ 1 đến 255 ký tự"
+        }
+
+        val validCategories = setOf(
+            "Rau củ",
+            "Trái cây",
+            "Thịt",
+            "Thủy hải sản",
+            "Sản phẩm khác",
+            "Vegetables",
+            "Fruits",
+            "Meat",
+            "Seafood",
+            "Others"
+        )
+
+        require(category in validCategories) {
+            "Danh mục sản phẩm không hợp lệ"
+        }
+
+        require(unit.isNotBlank() && unit.length <= 255) {
+            "Đơn vị tính phải có từ 1 đến 255 ký tự"
+        }
+
+        require(request.price.isFinite() && request.price > 0.0) {
+            "Giá sản phẩm phải là số hợp lệ và lớn hơn 0"
+        }
+
+        require(request.quantity.isFinite() && request.quantity >= 0.0) {
+            "Số lượng tồn phải là số hợp lệ và không được âm"
+        }
 
         val product = Product(
-            name = request.name,
-            category = request.category,
+            name = name,
+            category = category,
             price = request.price,
             quantity = request.quantity,
-            unit = request.unit,
-            description = request.description,
-            imageUrls = request.imageUrls,
+            unit = unit,
+            description = request.description.trim(),
+            imageUrls = request.imageUrls.toMutableList(),
             farmer = farmer
         )
 
         val savedProduct = productRepository.save(product)
 
         return ProductResponse(
-            id = savedProduct.id!!,
+            id = requireNotNull(savedProduct.id),
             name = savedProduct.name,
             category = savedProduct.category,
             price = savedProduct.price,
             quantity = savedProduct.quantity,
             unit = savedProduct.unit,
             description = savedProduct.description,
-            imageUrls = request.imageUrls,
+            imageUrls = savedProduct.imageUrls,
             farmerName = farmer.fullName,
             rating = savedProduct.rating,
             reviewCount = savedProduct.reviewCount,
-            farmerId = farmer.id!!,
+            farmerId = requireNotNull(farmer.id),
             farmerPhone = farmer.phoneNumber,
             farmerAvatar = farmer.avatarUrl ?: ""
         )

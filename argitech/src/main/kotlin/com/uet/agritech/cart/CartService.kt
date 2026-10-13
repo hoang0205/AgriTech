@@ -5,8 +5,10 @@ import com.uet.agritech.cart.dto.CartResponse
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.user.RecommendationService
 import com.uet.agritech.user.UserRepository
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class CartService(
@@ -17,48 +19,116 @@ class CartService(
 ) {
     @Transactional
     fun addToCart(request: AddToCartRequest, phoneNumber: String) {
+        val productId = request.productId.trim()
+
+        require(productId.isNotBlank()) {
+            "ID sản phẩm không được để trống"
+        }
+
+        require(request.quantity.isFinite() && request.quantity > 0.0) {
+            "Số lượng thêm vào giỏ phải là số hợp lệ và lớn hơn 0"
+        }
+
         val user = userRepository.findByPhoneNumber(phoneNumber)
-            .orElseThrow { RuntimeException("Không tìm thấy người dùng") }
-        val product = productRepository.findById(request.productId)
-            .orElseThrow { RuntimeException("Sản phẩm không tồn tại") }
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.UNAUTHORIZED,
+                    "Không tìm thấy người dùng"
+                )
+            }
+
+        val product = productRepository.findById(productId)
+            .orElseThrow {
+                RuntimeException("Sản phẩm không tồn tại")
+            }
 
         if (product.farmer.id == user.id) {
-            throw RuntimeException("Bạn không thể thêm sản phẩm của chính mình vào giỏ hàng!")
+            throw RuntimeException(
+                "Bạn không thể thêm sản phẩm của chính mình vào giỏ hàng!"
+            )
         }
 
-        if (request.quantity > product.quantity) {
-            throw RuntimeException("Số lượng mua vượt quá hàng trong kho!")
+        require(product.quantity.isFinite() && product.quantity >= 0.0) {
+            "Dữ liệu tồn kho sản phẩm không hợp lệ"
         }
 
-        val existingItem = cartItemRepository.findByUserAndProduct(user, product)
+        val existingItem = cartItemRepository.findByUserAndProduct(
+            user,
+            product
+        )
 
-        interactionService.recordInteraction(phoneNumber, product, "ADD_TO_CART", 2.0)
+        val currentQuantity = existingItem?.quantity ?: 0.0
+
+        require(currentQuantity.isFinite() && currentQuantity >= 0.0) {
+            "Số lượng hiện tại trong giỏ không hợp lệ"
+        }
+
+        val newQuantity = currentQuantity + request.quantity
+
+        require(newQuantity.isFinite() && newQuantity > 0.0) {
+            "Tổng số lượng trong giỏ không hợp lệ"
+        }
+
+        require(newQuantity <= product.quantity) {
+            "Tổng số lượng trong giỏ vượt quá hàng trong kho!"
+        }
 
         if (existingItem != null) {
-            existingItem.quantity += request.quantity
+            existingItem.quantity = newQuantity
             cartItemRepository.save(existingItem)
         } else {
-            val newItem = CartItem(user = user, product = product, quantity = request.quantity)
-            cartItemRepository.save(newItem)
+            cartItemRepository.save(
+                CartItem(
+                    user = user,
+                    product = product,
+                    quantity = newQuantity
+                )
+            )
         }
+
+        interactionService.recordInteraction(
+            phoneNumber,
+            product,
+            "ADD_TO_CART",
+            2.0
+        )
     }
 
     @Transactional
-    fun updateQuantity(cartItemId: Long, quantity: Double, phoneNumber: String) {
-        val cartItem = cartItemRepository.findById(cartItemId)
-            .orElseThrow { RuntimeException("Không tìm thấy món đồ này trong giỏ!") }
-
-        if (cartItem.user.phoneNumber != phoneNumber) {
-            throw RuntimeException("Bạn không có quyền sửa giỏ hàng người khác!")
+    fun updateQuantity(
+        cartItemId: Long,
+        quantity: Double,
+        phoneNumber: String
+    ) {
+        require(quantity.isFinite() && quantity >= 0.0) {
+            "Số lượng phải là số hợp lệ và không được âm"
         }
 
-        if (quantity <= 0) {
+        val cartItem = cartItemRepository.findById(cartItemId)
+            .orElseThrow {
+                RuntimeException("Không tìm thấy món đồ này trong giỏ!")
+            }
+
+        if (cartItem.user.phoneNumber != phoneNumber) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Bạn không có quyền sửa giỏ hàng người khác!"
+            )
+        }
+
+        if (quantity == 0.0) {
             cartItemRepository.delete(cartItem)
             return
         }
 
-        if (quantity > cartItem.product.quantity) {
-            throw RuntimeException("Kho không đủ hàng!")
+        val stock = cartItem.product.quantity
+
+        require(stock.isFinite() && stock >= 0.0) {
+            "Dữ liệu tồn kho sản phẩm không hợp lệ"
+        }
+
+        require(quantity <= stock) {
+            "Kho không đủ hàng!"
         }
 
         cartItem.quantity = quantity

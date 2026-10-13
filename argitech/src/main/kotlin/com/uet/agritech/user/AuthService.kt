@@ -20,6 +20,9 @@ class AuthService(
 ) {
 
     fun register(request: RegisterRequest): RegisterResponse {
+        require(request.role != Role.ADMIN) {
+            "Không được đăng ký tài khoản quản trị viên"
+        }
         if (userRepository.findByPhoneNumber(request.phoneNumber).isPresent) {
             throw java.lang.RuntimeException("Số điện thoại đã tồn tại!")
         }
@@ -55,6 +58,7 @@ class AuthService(
             refreshToken = refreshToken,
             fullName = user.fullName,
             avatarUrl = user.avatarUrl,
+            role = user.role,
             firebaseToken = firebaseToken
         )
     }
@@ -142,7 +146,8 @@ class AuthService(
             accessToken = jwtService.generateAccessToken(user),
             refreshToken = jwtService.generateRefreshToken(user),
             fullName = user.fullName,
-            avatarUrl = user.avatarUrl
+            avatarUrl = user.avatarUrl,
+            role = user.role
         )
     }
 

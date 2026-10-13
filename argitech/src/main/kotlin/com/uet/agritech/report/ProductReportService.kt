@@ -5,8 +5,10 @@ import com.uet.agritech.user.UserRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class ProductReportService(
@@ -97,11 +99,115 @@ class ProductReportService(
     @Transactional(readOnly = true)
     fun getAll(
         page: Int,
-        size: Int
+        size: Int,
+        status: ReportStatus? = null
     ): Page<ProductReportResponse> {
-        return reportRepository.findAll(
-            pageable(page, size)
-        ).map { toResponse(it) }
+        val pageable = pageable(page, size)
+
+        val reports = if (status == null) {
+            reportRepository.findAll(pageable)
+        } else {
+            reportRepository.findByStatus(status, pageable)
+        }
+
+        return reports.map { toResponse(it) }
+    }
+
+    @Transactional
+    fun update(
+        id: Long,
+        request: UpdateProductReportRequest
+    ): ProductReportResponse {
+        val report = reportRepository.findForUpdate(id)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Báo cáo không tồn tại"
+                )
+            }
+
+        if (
+            report.status == ReportStatus.RESOLVED ||
+            report.status == ReportStatus.REJECTED
+        ) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Báo cáo đã được đóng, không thể thay đổi kết quả"
+            )
+        }
+
+        require(request.status != ReportStatus.PENDING) {
+            "Không thể chuyển báo cáo về trạng thái chờ xử lý"
+        }
+
+        val reply = request.adminReply
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+
+        require(reply == null || reply.length <= 2000) {
+            "Phản hồi không được quá 2000 ký tự"
+        }
+
+        val isClosing =
+            request.status == ReportStatus.RESOLVED ||
+                    request.status == ReportStatus.REJECTED
+
+        require(!isClosing || reply != null) {
+            "Cần nhập phản hồi khi giải quyết hoặc từ chối báo cáo"
+        }
+
+        report.status = request.status
+
+        if (reply != null) {
+            report.adminReply = reply
+        }
+
+        return toResponse(reportRepository.save(report))
+    }
+
+    @Transactional(readOnly = true)
+    fun eligibility(
+        phone: String,
+        productId: String
+    ): ReportEligibilityResponse {
+        val user = userRepository.findByPhoneNumber(phone)
+            .orElseThrow {
+                RuntimeException("Người dùng không tồn tại")
+            }
+
+        val product = productRepository.findById(productId)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Sản phẩm không tồn tại"
+                )
+            }
+
+        if (product.farmer.id == user.id) {
+            return ReportEligibilityResponse(
+                canReport = false,
+                message = "Không thể báo cáo sản phẩm của chính mình"
+            )
+        }
+
+        val alreadyReported =
+            reportRepository.existsByReporterIdAndProductIdAndStatusIn(
+                requireNotNull(user.id),
+                productId,
+                listOf(
+                    ReportStatus.PENDING,
+                    ReportStatus.REVIEWING
+                )
+            )
+
+        if (alreadyReported) {
+            return ReportEligibilityResponse(
+                canReport = false,
+                message = "Bạn đã có báo cáo đang chờ xử lý cho sản phẩm này"
+            )
+        }
+
+        return ReportEligibilityResponse(canReport = true)
     }
 
     private fun pageable(page: Int, size: Int): PageRequest {
@@ -115,7 +221,10 @@ class ProductReportService(
         return PageRequest.of(
             page,
             size,
-            Sort.by("createdAt").descending()
+            Sort.by(
+                Sort.Order.desc("createdAt"),
+                Sort.Order.desc("id")
+            )
         )
     }
 
