@@ -9,6 +9,7 @@ import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
+import java.security.Principal
 
 @RestController
 @RequestMapping("/api/reviews")
@@ -16,12 +17,12 @@ class ReviewController(
     private val reviewService: ReviewService
 ) {
     @PostMapping
-    fun addReview(@RequestBody dto: ReviewRequestDto): ResponseEntity<Review> {
-        val authentication = SecurityContextHolder.getContext().authentication
-        val userId = authentication?.name
-
-        val review = userId?.let { reviewService.addReview(it, dto) }
-        return ResponseEntity.ok(review)
+    fun addReview(
+        @RequestBody dto: ReviewRequestDto,
+        principal: Principal
+    ): ResponseEntity<ReviewResponseDto> {
+        val response = reviewService.addReview(principal.name, dto)
+        return ResponseEntity.ok(response)
     }
 
     @GetMapping("/product/{productId}")

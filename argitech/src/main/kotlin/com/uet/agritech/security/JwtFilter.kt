@@ -1,5 +1,7 @@
 package com.uet.agritech.security
 
+import com.uet.agritech.user.UserRepository
+import io.jsonwebtoken.JwtException
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -13,7 +15,9 @@ import org.springframework.web.filter.OncePerRequestFilter
 class JwtFilter(
     private val jwtService: JwtService,
     private val userDetailsService: CustomUserDetailsService,
-    private val tokenBlacklistService: com.uet.agritech.user.TokenBlacklistService
+    private val tokenBlacklistService:
+    com.uet.agritech.user.TokenBlacklistService,
+    private val userRepository: UserRepository
 ) : OncePerRequestFilter() {
 
     override fun doFilterInternal(
@@ -40,6 +44,17 @@ class JwtFilter(
             val phoneNumber = jwtService.extractPhoneNumberForType(
                 jwt,
                 "ACCESS"
+            )
+
+            val user = userRepository.findByPhoneNumber(phoneNumber)
+                .orElseThrow {
+                    JwtException("Tài khoản không tồn tại")
+                }
+
+            jwtService.validateTokenForUser(
+                token = jwt,
+                user = user,
+                expectedType = "ACCESS"
             )
 
             if (phoneNumber != null && SecurityContextHolder.getContext().authentication == null) {

@@ -196,13 +196,6 @@ class ProductService(
 
         val productPage = productRepository.findByNameContainingIgnoreCase(keyword, pageable)
 
-        val userPhone = SecurityContextHolder.getContext().authentication?.name
-        if (userPhone != null) {
-            productPage.content.forEach { product ->
-                interactionService.recordInteraction(userPhone, product, "SEARCH", 0.5)
-            }
-        }
-
         return productPage.map { product ->
             ProductResponse(
                 id = product.id!!,

@@ -6,6 +6,7 @@ import com.uet.agritech.product.dto.ProductResponse
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 import kotlin.collections.get
 
@@ -19,220 +20,156 @@ class RecommendationService(
         private val logger = LoggerFactory.getLogger(RecommendationService::class.java)
     }
 
-    fun getPersonalizedRecommendations(phone: String, limit: Int = 10): List<ProductResponse> {
+    @Transactional(readOnly = true)
+    fun getMixedRecommendations(
+        phone: String,
+        limit: Int = 10
+    ): List<ProductResponse> {
+        val size = limit.coerceIn(1, 50)
+
         val user = userRepository.findByPhoneNumber(phone)
             .orElseThrow { IllegalArgumentException("User không tồn tại") }
 
-        val topScoredItems = try {
-            interactionRepository.findTopProductsByUser(user, PageRequest.of(0, limit))
+        val personal = loadSafely("personal") {
+            interactionRepository
+                .findTopProductsByUser(user, PageRequest.of(0, size))
+                .map { toResponse(it) }
+        }
+
+        val category = loadSafely("category") {
+            getCategoryRecommendations(user, size)
+                .map { toResponse(it) }
+        }
+
+        val similar = loadSafely("similar") {
+            getSimilarRecommendations(user, size)
+                .map { toResponse(it) }
+        }
+
+        val result = mutableListOf<ProductResponse>()
+        val seenIds = mutableSetOf<String>()
+
+        fun add(product: ProductResponse) {
+            if (result.size < size && seenIds.add(product.id)) {
+                result.add(product)
+            }
+        }
+
+        val sources = listOf(personal, category, similar)
+        val maxLength = sources.maxOf { it.size }
+
+        for (index in 0 until maxLength) {
+            for (source in sources) {
+                source.getOrNull(index)?.let { add(it) }
+            }
+
+            if (result.size >= size) break
+        }
+
+        if (result.size < size) {
+            val fallback = loadSafely("fallback") {
+                productRepository
+                    .findAvailableRecommendationFallback(
+                        PageRequest.of(0, size + seenIds.size)
+                    )
+                    .map { toResponse(it) }
+            }
+
+            fallback.forEach { add(it) }
+        }
+
+        return result
+    }
+
+    private fun getCategoryRecommendations(
+        user: User,
+        limit: Int
+    ): List<Product> {
+        val categories = interactionRepository
+            .findFavoriteCategoriesByUser(user, PageRequest.of(0, 3))
+            .mapNotNull { it.getOrNull(0) as? String }
+
+        val sources = categories.map { category ->
+            productRepository.findUnseenAvailableProductsByCategory(
+                category,
+                user,
+                PageRequest.of(0, limit)
+            )
+        }
+
+        return interleaveProducts(sources, limit)
+    }
+
+    private fun getSimilarRecommendations(
+        user: User,
+        limit: Int
+    ): List<Product> {
+        val similarUsers = interactionRepository
+            .findSimilarUsersByCategories(user, PageRequest.of(0, 5))
+
+        val sources = similarUsers.map { similarUser ->
+            interactionRepository.findUnseenProductsFromSimilarUser(
+                similarUser,
+                user,
+                PageRequest.of(0, limit)
+            )
+        }
+
+        return interleaveProducts(sources, limit)
+    }
+
+    private fun interleaveProducts(
+        sources: List<List<Product>>,
+        limit: Int
+    ): List<Product> {
+        val result = mutableListOf<Product>()
+        val seenIds = mutableSetOf<String>()
+        val maxLength = sources.maxOfOrNull { it.size } ?: 0
+
+        for (index in 0 until maxLength) {
+            for (source in sources) {
+                val product = source.getOrNull(index) ?: continue
+                val id = product.id ?: continue
+
+                if (seenIds.add(id)) {
+                    result.add(product)
+                    if (result.size >= limit) return result
+                }
+            }
+        }
+
+        return result
+    }
+
+    private fun loadSafely(
+        source: String,
+        block: () -> List<ProductResponse>
+    ): List<ProductResponse> {
+        return try {
+            block()
         } catch (e: Exception) {
-            logger.error("Lỗi khi lấy gợi ý: ${e.message}")
+            logger.error("Không lấy được nguồn gợi ý: $source", e)
             emptyList()
         }
-
-        if (topScoredItems.isEmpty()) {
-            logger.warn("Không tìm thấy gợi ý cho user: $phone")
-            return emptyList()
-        }
-
-        return topScoredItems.mapNotNull { row ->
-            try {
-                val product = row.getOrNull(0) as? Product ?: return@mapNotNull null
-                ProductResponse(
-                    id = product.id ?: return@mapNotNull null,
-                    name = product.name,
-                    category = product.category,
-                    price = product.price,
-                    quantity = product.quantity,
-                    unit = product.unit,
-                    description = product.description,
-                    imageUrls = product.imageUrls,
-                    farmerName = product.farmer.fullName,
-                    rating = product.rating,
-                    reviewCount = product.reviewCount,
-                    farmerId = product.farmer.id ?: return@mapNotNull null,
-                    farmerAvatar = product.farmer.avatarUrl ?: "",
-                    farmerPhone = product.farmer.phoneNumber ?: ""
-                )
-            } catch (e: Exception) {
-                logger.error("Lỗi mapping product: ${e.message}")
-                null
-            }
-        }
     }
 
-    fun getNewProductsInFavoriteCategories(phone: String, limit: Int = 10): List<ProductResponse> {
-        val user = userRepository.findByPhoneNumber(phone)
-            .orElseThrow { IllegalArgumentException("User không tồn tại") }
-
-        val favoriteCategories =
-            interactionRepository.findFavoriteCategoriesByUser(user, PageRequest.of(0, 3))
-
-        if (favoriteCategories.isEmpty()) {
-            logger.info("User $phone chưa có danh mục yêu thích, trả về sản phẩm ngẫu nhiên")
-            return getRandomProducts(limit)
-        }
-
-        val recommendations = mutableListOf<ProductResponse>()
-        val viewedProductIds = interactionRepository.findViewedProductIdsByUser(user)
-
-        for (category in favoriteCategories) {
-            val categoryName = category[0] as String
-            val newProducts = productRepository.findByCategoryNotInProductIds(
-                categoryName,
-                viewedProductIds,
-                PageRequest.of(0, limit)
-            )
-
-            newProducts.forEach { product ->
-                if (recommendations.size < limit) {
-                    recommendations.add(
-                        ProductResponse(
-                            id = product.id!!,
-                            name = product.name,
-                            category = product.category,
-                            price = product.price,
-                            quantity = product.quantity,
-                            unit = product.unit,
-                            description = product.description,
-                            imageUrls = product.imageUrls,
-                            farmerName = product.farmer.fullName,
-                            rating = product.rating,
-                            reviewCount = product.reviewCount,
-                            farmerId = product.farmer.id ?: "",
-                            farmerAvatar = product.farmer.avatarUrl ?: "",
-                            farmerPhone = product.farmer.phoneNumber ?: ""
-                        )
-                    )
-                }
-            }
-        }
-
-        return recommendations
-    }
-
-    fun getSimilarUserRecommendations(phone: String, limit: Int = 10): List<ProductResponse> {
-        val user = userRepository.findByPhoneNumber(phone)
-            .orElseThrow { IllegalArgumentException("User không tồn tại") }
-
-        val similarUsers =
-            interactionRepository.findSimilarUsersByCategories(user, PageRequest.of(0, 5))
-
-        if (similarUsers.isEmpty()) {
-            logger.info("Không tìm thấy user tương tự, trả về sản phẩm ngẫu nhiên")
-            return getRandomProducts(limit)
-        }
-
-        val viewedProductIds = interactionRepository.findViewedProductIdsByUser(user)
-        val recommendations = mutableListOf<ProductResponse>()
-
-        for (similarUserArray in similarUsers) {
-            val similarUser = similarUserArray[0] as com.uet.agritech.user.User
-
-            val theirFavoriteProducts = interactionRepository.findTopProductsByUser(
-                similarUser,
-                PageRequest.of(0, limit)
-            )
-
-            theirFavoriteProducts.forEach { row ->
-                try {
-                    val product = row.getOrNull(0) as? Product
-                    if (product != null && !viewedProductIds.contains(product.id) && recommendations.size < limit) {
-                        recommendations.add(
-                            ProductResponse(
-                                id = product.id!!,
-                                name = product.name,
-                                category = product.category,
-                                price = product.price,
-                                quantity = product.quantity,
-                                unit = product.unit,
-                                description = product.description,
-                                imageUrls = product.imageUrls,
-                                farmerName = product.farmer.fullName,
-                                rating = product.rating,
-                                reviewCount = product.reviewCount,
-                                farmerId = product.farmer.id ?: "",
-                                farmerAvatar = product.farmer.avatarUrl ?: "",
-                                farmerPhone = product.farmer.phoneNumber ?: ""
-                            )
-                        )
-                    }
-                } catch (e: Exception) {
-                    logger.error("Lỗi mapping product: ${e.message}")
-                }
-            }
-        }
-
-        return recommendations
-    }
-
-    fun getMixedRecommendations(phone: String, limit: Int = 10): List<ProductResponse> {
-        val user = userRepository.findByPhoneNumber(phone)
-            .orElseThrow { IllegalArgumentException("User không tồn tại") }
-
-        try {
-            val personalizedRecs = getPersonalizedRecommendations(phone, limit)
-            val newCategoryRecs = getNewProductsInFavoriteCategories(phone, limit)
-            val similarUserRecs = getSimilarUserRecommendations(phone, limit)
-
-            val mixedList = mutableListOf<ProductResponse>()
-            val maxSize = maxOf(personalizedRecs.size, newCategoryRecs.size, similarUserRecs.size)
-            val productIds = mutableSetOf<String>()
-
-            for (i in 0 until maxSize) {
-                if (i < personalizedRecs.size) {
-                    val product = personalizedRecs[i]
-                    if (!productIds.contains(product.id)) {
-                        mixedList.add(product)
-                        productIds.add(product.id)
-                    }
-                }
-
-                if (i < newCategoryRecs.size && mixedList.size < limit) {
-                    val product = newCategoryRecs[i]
-                    if (!productIds.contains(product.id)) {
-                        mixedList.add(product)
-                        productIds.add(product.id)
-                    }
-                }
-
-                if (i < similarUserRecs.size && mixedList.size < limit) {
-                    val product = similarUserRecs[i]
-                    if (!productIds.contains(product.id)) {
-                        mixedList.add(product)
-                        productIds.add(product.id)
-                    }
-                }
-
-                if (mixedList.size >= limit) break
-            }
-
-            return mixedList.take(limit)
-        } catch (e: Exception) {
-            logger.error("Lỗi khi lấy gợi ý kết hợp: ${e.message}")
-            return emptyList()
-        }
-    }
-
-    private fun getRandomProducts(limit: Int): List<ProductResponse> {
-        return productRepository.findRandomProducts(limit).map { product ->
-            ProductResponse(
-                id = product.id!!,
-                name = product.name,
-                category = product.category,
-                price = product.price,
-                quantity = product.quantity,
-                unit = product.unit,
-                description = product.description,
-                imageUrls = product.imageUrls,
-                farmerName = product.farmer.fullName,
-                rating = product.rating,
-                reviewCount = product.reviewCount,
-                farmerId = product.farmer.id ?: "",
-                farmerAvatar = product.farmer.avatarUrl ?: "",
-                farmerPhone = product.farmer.phoneNumber ?: ""
-            )
-        }
+    private fun toResponse(product: Product): ProductResponse {
+        return ProductResponse(
+            id = requireNotNull(product.id),
+            name = product.name,
+            category = product.category,
+            price = product.price,
+            quantity = product.quantity,
+            unit = product.unit,
+            description = product.description,
+            imageUrls = product.imageUrls.toMutableList(),
+            farmerName = product.farmer.fullName,
+            rating = product.rating,
+            reviewCount = product.reviewCount,
+            farmerId = requireNotNull(product.farmer.id),
+            farmerAvatar = product.farmer.avatarUrl ?: "",
+            farmerPhone = product.farmer.phoneNumber ?: ""
+        )
     }
 
     fun recordInteraction(

@@ -6,6 +6,7 @@ import com.uet.agritech.user.User
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 
 @Repository
@@ -41,4 +42,16 @@ interface OrderItemRepository : JpaRepository<OrderItem, Long> {
         GROUP BY oi.product.category
     """)
     fun getRevenueByCategory(farmer: User): List<CategoryRevenueDto>
+
+    @Query("""
+    SELECT COUNT(oi)
+    FROM OrderItem oi
+    WHERE oi.order.user.phoneNumber = :phone
+      AND oi.product.id = :productId
+      AND oi.order.status = 'COMPLETED'
+""")
+    fun countCompletedPurchases(
+        @Param("phone") phone: String,
+        @Param("productId") productId: String
+    ): Long
 }

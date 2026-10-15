@@ -1,5 +1,6 @@
 package com.uet.agritech.product
 
+import com.uet.agritech.user.User
 import jakarta.persistence.LockModeType
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -58,4 +59,34 @@ interface ProductRepository : JpaRepository<Product, String> {
     fun findForStockUpdate(
         @Param("id") id: String
     ): Optional<Product>
+
+    @Query("""
+    SELECT p
+    FROM Product p
+    WHERE p.category = :category
+      AND p.quantity > 0
+      AND NOT EXISTS (
+          SELECT i.id
+          FROM UserInteraction i
+          WHERE i.user = :user
+            AND i.product = p
+            AND i.actionType IN ('VIEW', 'ADD_TO_CART', 'PURCHASE')
+      )
+    ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
+""")
+    fun findUnseenAvailableProductsByCategory(
+        category: String,
+        user: User,
+        pageable: Pageable
+    ): List<Product>
+
+    @Query("""
+    SELECT p
+    FROM Product p
+    WHERE p.quantity > 0
+    ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
+""")
+    fun findAvailableRecommendationFallback(
+        pageable: Pageable
+    ): List<Product>
 }

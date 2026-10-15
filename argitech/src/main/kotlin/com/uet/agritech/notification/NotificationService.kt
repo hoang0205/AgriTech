@@ -1,5 +1,6 @@
 package com.uet.agritech.notification
 
+import com.google.firebase.messaging.AndroidConfig
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.Message
 import com.google.firebase.messaging.Notification
@@ -32,14 +33,16 @@ class NotificationService(
             return
         }
 
-        val notification = Notification.builder()
-            .setTitle(senderName)
-            .setBody(messageText)
-            .build()
-
         val message = Message.builder()
             .setToken(fcmToken)
-            .setNotification(notification)
+            .setAndroidConfig(
+                AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .build()
+            )
+            .putData("recipientId", requireNotNull(recipient.id))
+            .putData("title", senderName)
+            .putData("body", messageText)
             .putData("roomId", roomId)
             .putData("senderName", senderName)
             .build()
@@ -64,14 +67,14 @@ class NotificationService(
             return
         }
 
-        val notification = Notification.builder()
-            .setTitle(title)
-            .setBody(body)
-            .build()
-
         val message = Message.builder()
             .setToken(fcmToken)
-            .setNotification(notification)
+            .setAndroidConfig(
+                AndroidConfig.builder()
+                    .setPriority(AndroidConfig.Priority.HIGH)
+                    .build()
+            )
+            .putData("recipientId", requireNotNull(recipient.id))
             .putData("type", "ORDER_STATUS")
             .putData("orderId", orderId.toString())
             .putData("status", status)

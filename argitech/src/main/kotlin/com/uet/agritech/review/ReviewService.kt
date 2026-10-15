@@ -1,20 +1,25 @@
 package com.uet.agritech.review
 
+import com.uet.agritech.order.OrderItemRepository
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.review.dto.ReviewRequestDto
 import com.uet.agritech.review.dto.ReviewResponseDto
 import com.uet.agritech.review.dto.ReviewSummaryDto
 import com.uet.agritech.user.UserRepository // Import UserRepository
+import jakarta.persistence.EntityManager
+import jakarta.persistence.LockModeType
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.core.task.TaskExecutor
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable // Import Pageable
 import org.springframework.data.domain.Sort
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
+import org.springframework.web.server.ResponseStatusException
 import kotlin.concurrent.thread
 import kotlin.math.round // Import hàm làm tròn số
 
@@ -24,13 +29,41 @@ class ReviewService(
     private val productRepository: ProductRepository,
     private val userRepository: UserRepository,
     private val aiServiceClient: AiServiceClient,
+    private val entityManager: EntityManager,
+    private val productSummaryWriter: ProductSummaryWriter,
     @Qualifier("aiSummaryExecutor")
-    private val aiSummaryExecutor: TaskExecutor
+    private val aiSummaryExecutor: TaskExecutor,
+    private val orderItemRepository: OrderItemRepository,
 ) {
     @Transactional
-    fun addReview(userId: String, dto: ReviewRequestDto): Review {
-        val product = productRepository.findById(dto.productId)
-            .orElseThrow { RuntimeException("Sản phẩm không tồn tại với ID: ${dto.productId}") }
+    fun addReview(
+        userId: String,
+        dto: ReviewRequestDto
+    ): ReviewResponseDto {
+        val product = productRepository.findForStockUpdate(dto.productId)
+            .orElseThrow {
+                RuntimeException("Sản phẩm không tồn tại với ID: ${dto.productId}")
+            }
+
+        entityManager.refresh(product, LockModeType.PESSIMISTIC_WRITE)
+
+        val reviewer = userRepository.findByPhoneNumber(userId)
+            .orElseThrow {
+                RuntimeException("Tài khoản đánh giá không tồn tại")
+            }
+
+        val completedPurchases =
+            orderItemRepository.countCompletedPurchases(
+                phone = reviewer.phoneNumber,
+                productId = dto.productId
+            )
+
+        if (completedPurchases == 0L) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Bạn chỉ được đánh giá sản phẩm đã nhận thành công"
+            )
+        }
 
         val isAlreadyReviewed = reviewRepository.existsByProductIdAndUserId(dto.productId, userId)
         if (isAlreadyReviewed) {
@@ -74,7 +107,16 @@ class ReviewService(
             )
         }
 
-        return savedReview
+        return ReviewResponseDto(
+            id = savedReview.id,
+            productId = requireNotNull(product.id),
+            userId = userId,
+            userName = reviewer.fullName,
+            rating = savedReview.rating,
+            comment = savedReview.comment,
+            imageUrls = savedReview.imageUrls,
+            createdAt = savedReview.createdAt
+        )
     }
 
     private fun triggerAiReviewSummary(productId: String, productName: String) {
@@ -90,13 +132,16 @@ class ReviewService(
                 val aiResponse = aiServiceClient.summarizeReviews(productName, validComments)
 
                 if (aiResponse != null && aiResponse.success) {
-                    val currentProduct = productRepository.findById(productId).orElse(null)
-                    if (currentProduct != null) {
-                        currentProduct.aiPros = aiResponse.pros.joinToString("\n")
-                        currentProduct.aiCons = aiResponse.cons.joinToString("\n")
-                        productRepository.save(currentProduct)
-                        println("--> Đã cập nhật thành công đánh giá tổng quát cho sản phẩm: $productName")
-                    }
+                    productSummaryWriter.update(
+                        productId = productId,
+                        pros = aiResponse.pros.joinToString("\n"),
+                        cons = aiResponse.cons.joinToString("\n")
+                    )
+
+                    println(
+                        "--> Đã cập nhật thành công đánh giá tổng quát " +
+                                "cho sản phẩm: $productName"
+                    )
                 }
             }
         } catch (e: Exception) {
@@ -113,6 +158,7 @@ class ReviewService(
 
             ReviewResponseDto(
                 id = review.id,
+                productId = productId,
                 userId = review.userId,
                 userName = fullName,
                 rating = review.rating,

@@ -15,7 +15,7 @@ data class Review(
     @JoinColumn(name = "product_id", nullable = false)
     val product: Product,
 
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     val userId: String,
 
     @Column(nullable = false)

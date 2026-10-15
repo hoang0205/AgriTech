@@ -5,6 +5,8 @@ import com.uet.agritech.security.JwtService
 import com.uet.agritech.user.dto.*
 import io.jsonwebtoken.ExpiredJwtException
 import io.jsonwebtoken.JwtException
+import jakarta.persistence.EntityManager
+import jakarta.persistence.LockModeType
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,7 +18,9 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val jwtService: JwtService,
     private val emailService: EmailService,
-    private val tokenBlacklistService: TokenBlacklistService
+    private val tokenBlacklistService: TokenBlacklistService,
+    private val entityManager: EntityManager,
+    private val firebaseSessionService: FirebaseSessionService,
 ) {
 
     fun register(request: RegisterRequest): RegisterResponse {
@@ -42,16 +46,22 @@ class AuthService(
         return RegisterResponse("Đăng kí tài khoản thành công")
     }
 
+    @Transactional
     fun login(request: LoginRequest): LoginResponse {
-        val user = userRepository.findByPhoneNumber(request.phoneNumber)
-            .orElseThrow { RuntimeException("Sai số điện thoại hoặc mật khẩu!") }
+        val user = userRepository.findByPhoneForAuthUpdate(
+            request.phoneNumber
+        ).orElseThrow {
+            RuntimeException("Sai số điện thoại hoặc mật khẩu!")
+        }
+
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
 
         if (!passwordEncoder.matches(request.password, user.password)) {
             throw RuntimeException("Sai số điện thoại hoặc mật khẩu!")
         }
         val accessToken = jwtService.generateAccessToken(user)
         val refreshToken = jwtService.generateRefreshToken(user)
-        val firebaseToken = createFirebaseToken(user.id)
+        val firebaseToken = firebaseSessionService.createLoginToken(user)
 
         return LoginResponse(
             accessToken = accessToken,
@@ -91,9 +101,16 @@ class AuthService(
         return MessageResponse("Xác thực email thành công")
     }
 
-    fun resetPassword(request: ResetPasswordRequest): MessageResponse {
-        val user = userRepository.findByEmail(request.email)
-            .orElseThrow { RuntimeException("Email không tồn tại!") }
+    @Transactional
+    fun resetPassword(
+        request: ResetPasswordRequest
+    ): MessageResponse {
+        val user = userRepository.findByEmailForAuthUpdate(request.email)
+            .orElseThrow {
+                RuntimeException("Email không tồn tại!")
+            }
+
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
 
         val storedOtp = user.resetOtp
         val expiryTime = user.otpExpiryTime
@@ -115,32 +132,47 @@ class AuthService(
 
         user.password = passwordEncoder.encode(request.newPassword).toString()
 
+        user.tokenVersion += 1
+
         user.resetOtp = null
         user.otpExpiryTime = null
 
         userRepository.save(user)
-
+        firebaseSessionService.revokeSessions(user)
         return MessageResponse("Đổi mật khẩu thành công!")
     }
 
-    fun refreshAccessToken(request: RefreshTokenRequest): LoginResponse {
-        if (tokenBlacklistService.isTokenBlacklisted(request.refreshToken)) {
-            throw io.jsonwebtoken.JwtException(
-                "Phiên đăng nhập đã kết thúc"
-            )
-        }
-
+    @Transactional
+    fun refreshAccessToken(
+        request: RefreshTokenRequest
+    ): LoginResponse {
         val phoneNumber = jwtService.extractPhoneNumberForType(
             request.refreshToken,
             "REFRESH"
         )
 
-        val user = userRepository.findByPhoneNumber(phoneNumber)
+        val user = userRepository.findByPhoneForAuthUpdate(phoneNumber)
             .orElseThrow {
-                io.jsonwebtoken.JwtException(
-                    "Phiên đăng nhập không hợp lệ"
-                )
+                JwtException("Phiên đăng nhập không hợp lệ")
             }
+
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
+
+        if (
+            tokenBlacklistService.isTokenBlacklisted(
+                request.refreshToken
+            )
+        ) {
+            throw JwtException("Refresh token đã được sử dụng hoặc thu hồi")
+        }
+
+        jwtService.validateTokenForUser(
+            token = request.refreshToken,
+            user = user,
+            expectedType = "REFRESH"
+        )
+
+        tokenBlacklistService.blacklistToken(request.refreshToken)
 
         return LoginResponse(
             accessToken = jwtService.generateAccessToken(user),
@@ -157,6 +189,13 @@ class AuthService(
             request.refreshToken,
             "REFRESH"
         )
+
+        val user = userRepository.findByPhoneForAuthUpdate(refreshPhone)
+            .orElseThrow {
+                JwtException("Tài khoản không tồn tại")
+            }
+
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
 
         val accessPhone = try {
             jwtService.extractPhoneNumberForType(
@@ -180,6 +219,8 @@ class AuthService(
 
         tokenBlacklistService.blacklistToken(request.refreshToken)
         tokenBlacklistService.blacklistToken(request.accessToken)
+
+        user.fcmToken = null
 
         return LogoutResponse("Đăng xuất thành công!")
     }

@@ -74,7 +74,10 @@ class ProductController(
         @RequestParam(defaultValue = "10") limit: Int
     ): ResponseEntity<List<ProductResponse>> {
         val phone = SecurityContextHolder.getContext().authentication?.name
-        val recommendations = recommendationService.getMixedRecommendations(phone.toString(), limit)
+        val recommendations = recommendationService.getMixedRecommendations(
+            phone.toString(),
+            limit.coerceIn(1, 50)
+        )
         return ResponseEntity.ok(recommendations)
     }
 

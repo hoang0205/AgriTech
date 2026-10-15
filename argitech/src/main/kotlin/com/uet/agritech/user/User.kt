@@ -40,7 +40,14 @@ class User(
     var createdAt: Date? = null,
 
     @Column(name = "fcm_token")
-    var fcmToken: String? = null
+    var fcmToken: String? = null,
+
+    @Column(name = "token_version", nullable = false)
+    var tokenVersion: Long = 0,
+
+    @Version
+    @Column(name = "row_version", nullable = false)
+    var rowVersion: Long = 0
 ) {
     @PrePersist
     fun onCreate() {

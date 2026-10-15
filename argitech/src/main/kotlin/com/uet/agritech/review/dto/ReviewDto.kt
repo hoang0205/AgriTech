@@ -11,6 +11,7 @@ data class ReviewRequestDto(
 
 data class ReviewResponseDto(
     val id: String,
+    val productId: String,
     val userId: String,
     val userName: String,
     val rating: Int,
