@@ -76,6 +76,10 @@ class OrderService(
         for ((productId, quantity) in quantitiesByProduct) {
             val product = products.getValue(productId)
 
+            require(!product.hidden) {
+                "Sản phẩm đang bị ẩn, không thể mua: ${product.name}"
+            }
+
             if (
                 !quantity.isFinite() ||
                 !product.quantity.isFinite() ||

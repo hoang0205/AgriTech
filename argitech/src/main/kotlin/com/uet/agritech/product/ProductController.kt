@@ -52,16 +52,32 @@ class ProductController(
 
     @GetMapping("/search")
     fun searchProducts(
-        @RequestParam keyword: String,
-        @RequestParam(defaultValue = "0") page: Int,
-        @RequestParam(defaultValue = "10") size: Int
-    ): ResponseEntity<Any> {
-        return ResponseEntity.ok(productService.searchProducts(keyword, page, size))
+        @RequestParam("keyword") keyword: String,
+        @RequestParam(name = "page", defaultValue = "0") page: Int,
+        @RequestParam(name = "size", defaultValue = "10") size: Int,
+        @RequestParam(name = "farmerId", required = false) farmerId: String?
+    ): ResponseEntity<Page<ProductResponse>> {
+        return ResponseEntity.ok(
+            productService.searchProducts(
+                keyword = keyword,
+                page = page,
+                size = size,
+                farmerId = farmerId
+            )
+        )
     }
 
     @GetMapping("/suggest")
-    fun suggestProducts(@RequestParam keyword: String): ResponseEntity<List<String>> {
-        return ResponseEntity.ok(productService.suggestProductNames(keyword))
+    fun suggestProducts(
+        @RequestParam("keyword") keyword: String,
+        @RequestParam(name = "farmerId", required = false) farmerId: String?
+    ): ResponseEntity<List<String>> {
+        return ResponseEntity.ok(
+            productService.suggestProductNames(
+                keyword = keyword,
+                farmerId = farmerId
+            )
+        )
     }
 
     @GetMapping("/{id}")

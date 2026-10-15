@@ -14,44 +14,88 @@ import java.util.Optional
 @Repository
 interface ProductRepository : JpaRepository<Product, String> {
 
-    fun findByFarmerId(farmerId: String, pageable: Pageable): Page<Product>
+    fun findByHiddenFalse(pageable: Pageable): Page<Product>
 
-    fun findByCategory(category: String, pageable: Pageable): Page<Product>
+    fun findByFarmerIdAndHiddenFalse(
+        farmerId: String,
+        pageable: Pageable
+    ): Page<Product>
 
-    fun findByNameContainingIgnoreCase(name: String): List<Product>
+    fun findByCategoryAndHiddenFalse(
+        category: String,
+        pageable: Pageable
+    ): Page<Product>
 
-    @Query(value = "SELECT * FROM products ORDER BY RAND() LIMIT :limit", nativeQuery = true)
-    fun findRandomProducts(limit: Int): List<Product>
+    fun findByHiddenFalseAndNameContainingIgnoreCase(
+        name: String
+    ): List<Product>
 
-    fun findByNameContainingIgnoreCase(name: String, pageable: Pageable): Page<Product>
+    fun findByHiddenFalseAndNameContainingIgnoreCase(
+        name: String,
+        pageable: Pageable
+    ): Page<Product>
 
     @Query(
-        value = "SELECT DISTINCT name FROM products WHERE LOWER(name) LIKE LOWER(CONCAT('%', :keyword, '%')) LIMIT 5",
+        value = """
+            SELECT * FROM products
+            WHERE hidden = false
+            ORDER BY RAND()
+            LIMIT :limit
+        """,
         nativeQuery = true
     )
-    fun suggestProductNames(keyword: String): List<String>
+    fun findRandomProducts(
+        @Param("limit") limit: Int
+    ): List<Product>
 
     @Query(
         """
-    SELECT p FROM Product p 
-    WHERE p.category = :category 
-    AND p.id NOT IN :viewedProductIds
-    ORDER BY RAND()
-"""
+        SELECT p FROM Product p
+        WHERE p.hidden = false
+          AND LOWER(p.name) LIKE LOWER(:pattern) ESCAPE '!'
+          AND (:farmerId IS NULL OR p.farmer.id = :farmerId)
+        """
+    )
+    fun searchProducts(
+        @Param("pattern") pattern: String,
+        @Param("farmerId") farmerId: String?,
+        pageable: Pageable
+    ): Page<Product>
+
+    @Query(
+        """
+        SELECT DISTINCT p.name FROM Product p
+        WHERE p.hidden = false
+          AND LOWER(p.name) LIKE LOWER(:pattern) ESCAPE '!'
+          AND (:farmerId IS NULL OR p.farmer.id = :farmerId)
+        ORDER BY p.name ASC
+        """
+    )
+    fun suggestProductNames(
+        @Param("pattern") pattern: String,
+        @Param("farmerId") farmerId: String?,
+        pageable: Pageable
+    ): List<String>
+
+    @Query(
+        """
+        SELECT p FROM Product p
+        WHERE p.hidden = false
+          AND p.category = :category
+          AND p.id NOT IN :viewedProductIds
+        ORDER BY RAND()
+        """
     )
     fun findByCategoryNotInProductIds(
-        category: String,
-        viewedProductIds: List<String>,
+        @Param("category") category: String,
+        @Param("viewedProductIds") viewedProductIds: List<String>,
         pageable: Pageable
     ): List<Product>
 
-    @Lock(
-        LockModeType.PESSIMISTIC_WRITE
-    )
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select p from Product p where p.id = :id")
     fun findForReport(
-        @Param("id")
-        id: String
+        @Param("id") id: String
     ): Optional<Product>
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -60,32 +104,36 @@ interface ProductRepository : JpaRepository<Product, String> {
         @Param("id") id: String
     ): Optional<Product>
 
-    @Query("""
-    SELECT p
-    FROM Product p
-    WHERE p.category = :category
-      AND p.quantity > 0
-      AND NOT EXISTS (
-          SELECT i.id
-          FROM UserInteraction i
-          WHERE i.user = :user
-            AND i.product = p
-            AND i.actionType IN ('VIEW', 'ADD_TO_CART', 'PURCHASE')
-      )
-    ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
-""")
+    @Query(
+        """
+        SELECT p FROM Product p
+        WHERE p.hidden = false
+          AND p.category = :category
+          AND p.quantity > 0
+          AND NOT EXISTS (
+              SELECT i.id
+              FROM UserInteraction i
+              WHERE i.user = :user
+                AND i.product = p
+                AND i.actionType IN ('VIEW', 'ADD_TO_CART', 'PURCHASE')
+          )
+        ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
+        """
+    )
     fun findUnseenAvailableProductsByCategory(
-        category: String,
-        user: User,
+        @Param("category") category: String,
+        @Param("user") user: User,
         pageable: Pageable
     ): List<Product>
 
-    @Query("""
-    SELECT p
-    FROM Product p
-    WHERE p.quantity > 0
-    ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
-""")
+    @Query(
+        """
+        SELECT p FROM Product p
+        WHERE p.hidden = false
+          AND p.quantity > 0
+        ORDER BY p.rating DESC, p.reviewCount DESC, p.id ASC
+        """
+    )
     fun findAvailableRecommendationFallback(
         pageable: Pageable
     ): List<Product>

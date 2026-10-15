@@ -42,6 +42,10 @@ class CartService(
                 RuntimeException("Sản phẩm không tồn tại")
             }
 
+        require(!product.hidden) {
+            "Sản phẩm đang bị ẩn, không thể thêm vào giỏ"
+        }
+
         if (product.farmer.id == user.id) {
             throw RuntimeException(
                 "Bạn không thể thêm sản phẩm của chính mình vào giỏ hàng!"
@@ -119,6 +123,10 @@ class CartService(
         if (quantity == 0.0) {
             cartItemRepository.delete(cartItem)
             return
+        }
+
+        require(!cartItem.product.hidden) {
+            "Sản phẩm đang bị ẩn, không thể mua"
         }
 
         val stock = cartItem.product.quantity

@@ -61,4 +61,12 @@ class AdminReportController(
     ): ProductReportResponse {
         return reportService.update(id, request)
     }
+
+    @PatchMapping("/{id}/product-visibility")
+    fun updateProductVisibility(
+        @PathVariable("id") id: Long,
+        @RequestBody request: UpdateProductVisibilityRequest
+    ): ProductReportResponse {
+        return reportService.updateProductVisibility(id, request)
+    }
 }

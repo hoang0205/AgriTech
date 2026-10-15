@@ -240,7 +240,41 @@ class ProductReportService(
             imageUrls = report.imageUrls.toList(),
             status = report.status,
             adminReply = report.adminReply,
-            createdAt = report.createdAt.toString()
+            createdAt = report.createdAt.toString(),
+            productHidden = productRepository.findById(report.productId)
+                .orElse(null)
+                ?.hidden
         )
+    }
+
+    @Transactional
+    fun updateProductVisibility(
+        id: Long,
+        request: UpdateProductVisibilityRequest
+    ): ProductReportResponse {
+        val hidden = requireNotNull(request.hidden) {
+            "Cần chọn trạng thái hiển thị sản phẩm"
+        }
+
+        val report = reportRepository.findById(id)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Báo cáo không tồn tại"
+                )
+            }
+
+        val product = productRepository.findForStockUpdate(report.productId)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Sản phẩm không tồn tại"
+                )
+            }
+
+        product.hidden = hidden
+        productRepository.save(product)
+
+        return toResponse(report)
     }
 }

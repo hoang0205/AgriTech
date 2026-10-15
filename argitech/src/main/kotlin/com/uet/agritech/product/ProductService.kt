@@ -121,7 +121,7 @@ class ProductService(
     fun getAllProducts(page: Int, size: Int): Page<ProductResponse> {
         val pageable = PageRequest.of(page, size, Sort.by("id").ascending())
 
-        val productPage = productRepository.findAll(pageable)
+        val productPage = productRepository.findByHiddenFalse(pageable)
 
         return productPage.map { product ->
             ProductResponse(
@@ -169,7 +169,10 @@ class ProductService(
     fun getProductsByCategory(category: String, page: Int, size: Int): Page<ProductResponse> {
         val pageable = PageRequest.of(page, size, Sort.by("id").descending())
 
-        val productPage = productRepository.findByCategory(category, pageable)
+        val productPage = productRepository.findByCategoryAndHiddenFalse(
+            category,
+            pageable
+        )
 
         return productPage.map { product ->
             ProductResponse(
@@ -191,14 +194,46 @@ class ProductService(
         }
     }
 
-    fun searchProducts(keyword: String, page: Int, size: Int): Page<ProductResponse> {
-        val pageable = PageRequest.of(page, size, Sort.by("id").descending())
+    @Transactional(readOnly = true)
+    fun searchProducts(
+        keyword: String,
+        page: Int,
+        size: Int,
+        farmerId: String? = null
+    ): Page<ProductResponse> {
+        if (page < 0) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "page phải lớn hơn hoặc bằng 0"
+            )
+        }
 
-        val productPage = productRepository.findByNameContainingIgnoreCase(keyword, pageable)
+        if (size !in 1..100) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "size phải nằm trong khoảng 1 đến 100"
+            )
+        }
 
-        return productPage.map { product ->
+        val normalizedKeyword = normalizeSearchKeyword(keyword)
+        val normalizedFarmerId = normalizeSearchFarmerId(farmerId)
+        val pageable = PageRequest.of(
+            page,
+            size,
+            Sort.by("id").descending()
+        )
+
+        if (normalizedKeyword.isEmpty()) {
+            return Page.empty<ProductResponse>(pageable)
+        }
+
+        return productRepository.searchProducts(
+            pattern = buildSearchPattern(normalizedKeyword),
+            farmerId = normalizedFarmerId,
+            pageable = pageable
+        ).map { product ->
             ProductResponse(
-                id = product.id!!,
+                id = requireNotNull(product.id),
                 name = product.name,
                 category = product.category,
                 price = product.price,
@@ -209,20 +244,78 @@ class ProductService(
                 farmerName = product.farmer.fullName,
                 rating = product.rating,
                 reviewCount = product.reviewCount,
-                farmerId = product.farmer.id!!,
+                farmerId = requireNotNull(product.farmer.id),
                 farmerPhone = product.farmer.phoneNumber,
                 farmerAvatar = product.farmer.avatarUrl ?: ""
             )
         }
     }
 
-    fun suggestProductNames(keyword: String): List<String> {
-        return productRepository.suggestProductNames(keyword)
+    @Transactional(readOnly = true)
+    fun suggestProductNames(
+        keyword: String,
+        farmerId: String? = null
+    ): List<String> {
+        val normalizedKeyword = normalizeSearchKeyword(keyword)
+        val normalizedFarmerId = normalizeSearchFarmerId(farmerId)
+
+        if (normalizedKeyword.isEmpty()) {
+            return emptyList()
+        }
+
+        return productRepository.suggestProductNames(
+            pattern = buildSearchPattern(normalizedKeyword),
+            farmerId = normalizedFarmerId,
+            pageable = PageRequest.of(0, 5)
+        )
     }
 
+    private fun normalizeSearchKeyword(keyword: String): String {
+        val normalized = keyword.trim()
+
+        if (normalized.length > 255) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "Từ khóa tìm kiếm không được vượt quá 255 ký tự"
+            )
+        }
+
+        return normalized
+    }
+
+    private fun normalizeSearchFarmerId(farmerId: String?): String? {
+        if (farmerId == null) return null
+
+        val normalized = farmerId.trim()
+
+        if (normalized.isEmpty()) {
+            throw ResponseStatusException(
+                HttpStatus.BAD_REQUEST,
+                "farmerId không được để trống"
+            )
+        }
+
+        return normalized
+    }
+
+    private fun buildSearchPattern(keyword: String): String {
+        val escaped = keyword
+            .replace("!", "!!")
+            .replace("%", "!%")
+            .replace("_", "!_")
+
+        return "%$escaped%"
+    }
     fun getProductById(id: String): ProductResponse {
         val product = productRepository.findById(id)
             .orElseThrow { RuntimeException("Không tìm thấy sản phẩm này hoặc đã bị xóa!") }
+
+        if (product.hidden) {
+            throw ResponseStatusException(
+                HttpStatus.NOT_FOUND,
+                "Sản phẩm đang bị ẩn"
+            )
+        }
 
         val userPhone = SecurityContextHolder.getContext().authentication?.name
         if (userPhone != null) {
@@ -251,7 +344,11 @@ class ProductService(
 
     fun getProductsByFarmerId(farmerId: String, page: Int, size: Int): Page<ProductResponse> {
         val pageable = PageRequest.of(page, size, Sort.by("id").descending())
-        val productPage = productRepository.findByFarmerId(farmerId, pageable)
+
+        val productPage = productRepository.findByFarmerIdAndHiddenFalse(
+            farmerId,
+            pageable
+        )
 
         return productPage.map { product ->
             ProductResponse(

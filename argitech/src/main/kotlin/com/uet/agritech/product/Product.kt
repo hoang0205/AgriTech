@@ -50,5 +50,8 @@ class Product(
     var aiPros: String? = null,
 
     @Column(columnDefinition = "TEXT")
-    var aiCons: String? = null
+    var aiCons: String? = null,
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    var hidden: Boolean = false
 )
