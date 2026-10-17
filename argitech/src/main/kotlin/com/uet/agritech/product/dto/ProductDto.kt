@@ -7,7 +7,8 @@ data class ProductRequest(
     val quantity: Double,
     val unit: String,
     val description: String,
-    val imageUrls: MutableList<String>
+    val imageUrls: MutableList<String>,
+    val costPrice: Double? = null
 )
 
 data class ProductResponse(
@@ -27,4 +28,17 @@ data class ProductResponse(
     val reviewCount: Int,
     val aiPros: String? = null,
     val aiCons: String? = null
+)
+
+data class UpdateProductCostRequest(
+    val costPrice: Double? = null
+)
+
+data class ProductCostResponse(
+    val productId: String,
+    val productName: String,
+    val unit: String,
+    val sellingPrice: Double,
+    val costPrice: Double?,
+    val quantity: Double
 )

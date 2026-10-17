@@ -59,6 +59,14 @@ class AuthService(
         if (!passwordEncoder.matches(request.password, user.password)) {
             throw RuntimeException("Sai số điện thoại hoặc mật khẩu!")
         }
+
+        if (user.locked) {
+            throw org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.FORBIDDEN,
+                "Tài khoản đã bị khóa. Vui lòng liên hệ quản trị viên."
+            )
+        }
+
         val accessToken = jwtService.generateAccessToken(user)
         val refreshToken = jwtService.generateRefreshToken(user)
         val firebaseToken = firebaseSessionService.createLoginToken(user)
@@ -157,6 +165,9 @@ class AuthService(
             }
 
         entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
+        if (user.locked) {
+            throw JwtException("Tài khoản đã bị khóa")
+        }
 
         if (
             tokenBlacklistService.isTokenBlacklisted(

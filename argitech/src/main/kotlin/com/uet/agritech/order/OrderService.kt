@@ -153,7 +153,8 @@ class OrderService(
                     order = savedOrder,
                     product = product,
                     quantity = cartItem.quantity,
-                    price = product.price
+                    price = product.price,
+                    costPrice = product.costPrice
                 )
             }
 

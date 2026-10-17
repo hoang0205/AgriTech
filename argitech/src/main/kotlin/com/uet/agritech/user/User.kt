@@ -45,6 +45,13 @@ class User(
     @Column(name = "token_version", nullable = false)
     var tokenVersion: Long = 0,
 
+    @Column(
+        name = "is_locked",
+        nullable = false,
+        columnDefinition = "boolean default false"
+    )
+    var locked: Boolean = false,
+
     @Version
     @Column(name = "row_version", nullable = false)
     var rowVersion: Long = 0

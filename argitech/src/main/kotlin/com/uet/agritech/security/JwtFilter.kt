@@ -51,6 +51,15 @@ class JwtFilter(
                     JwtException("Tài khoản không tồn tại")
                 }
 
+            if (user.locked) {
+                response.status = HttpServletResponse.SC_UNAUTHORIZED
+                response.contentType = "application/json;charset=UTF-8"
+                response.writer.write(
+                    """{"message":"Tài khoản đã bị khóa"}"""
+                )
+                return
+            }
+
             jwtService.validateTokenForUser(
                 token = jwt,
                 user = user,

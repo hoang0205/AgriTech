@@ -53,5 +53,8 @@ class Product(
     var aiCons: String? = null,
 
     @Column(nullable = false, columnDefinition = "boolean default false")
-    var hidden: Boolean = false
+    var hidden: Boolean = false,
+
+    @Column(name = "cost_price")
+    var costPrice: Double? = null
 )

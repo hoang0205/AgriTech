@@ -137,4 +137,8 @@ interface ProductRepository : JpaRepository<Product, String> {
     fun findAvailableRecommendationFallback(
         pageable: Pageable
     ): List<Product>
+
+    fun findAllByFarmerOrderByNameAsc(
+        farmer: User
+    ): List<Product>
 }

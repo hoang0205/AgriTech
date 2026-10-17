@@ -22,5 +22,8 @@ class OrderItem(
     val quantity: Double,
 
     @Column(nullable = false)
-    val price: Double
+    val price: Double,
+
+    @Column(name = "cost_price")
+    val costPrice: Double? = null
 )

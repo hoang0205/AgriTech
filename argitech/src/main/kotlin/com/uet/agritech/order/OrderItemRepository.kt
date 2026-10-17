@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
+import java.time.LocalDateTime
 
 @Repository
 interface OrderItemRepository : JpaRepository<OrderItem, Long> {
@@ -54,4 +55,22 @@ interface OrderItemRepository : JpaRepository<OrderItem, Long> {
         @Param("phone") phone: String,
         @Param("productId") productId: String
     ): Long
+
+    @Query(
+        """
+        SELECT oi
+        FROM OrderItem oi
+        JOIN FETCH oi.product
+        JOIN FETCH oi.order o
+        WHERE o.user = :buyer
+          AND o.status = 'COMPLETED'
+          AND o.orderDate >= :start
+          AND o.orderDate < :end
+        """
+    )
+    fun findCompletedItemsForSpending(
+        @Param("buyer") buyer: User,
+        @Param("start") start: LocalDateTime,
+        @Param("end") end: LocalDateTime
+    ): List<OrderItem>
 }

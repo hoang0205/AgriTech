@@ -87,6 +87,13 @@ class ProductService(
             "Số lượng tồn phải là số hợp lệ và không được âm"
         }
 
+        require(
+            request.costPrice == null ||
+                    (request.costPrice.isFinite() && request.costPrice >= 0.0)
+        ) {
+            "Giá vốn phải là số hợp lệ và không được âm"
+        }
+
         val product = Product(
             name = name,
             category = category,
@@ -95,7 +102,8 @@ class ProductService(
             unit = unit,
             description = request.description.trim(),
             imageUrls = request.imageUrls.toMutableList(),
-            farmer = farmer
+            farmer = farmer,
+            costPrice = request.costPrice
         )
 
         val savedProduct = productRepository.save(product)
