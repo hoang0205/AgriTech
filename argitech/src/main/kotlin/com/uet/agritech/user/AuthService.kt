@@ -21,35 +21,67 @@ class AuthService(
     private val tokenBlacklistService: TokenBlacklistService,
     private val entityManager: EntityManager,
     private val firebaseSessionService: FirebaseSessionService,
+    private val registrationVerificationService: RegistrationVerificationService,
 ) {
 
-    fun register(request: RegisterRequest): RegisterResponse {
-        require(request.role != Role.ADMIN) {
-            "Không được đăng ký tài khoản quản trị viên"
-        }
-        if (userRepository.findByPhoneNumber(request.phoneNumber).isPresent) {
-            throw java.lang.RuntimeException("Số điện thoại đã tồn tại!")
-        }
+    private fun normalizePhone(phone: String): String {
+        val trimmed = phone.trim()
+        return if (trimmed.startsWith("+84")) "0" + trimmed.removePrefix("+84") else trimmed
+    }
 
-        if (userRepository.findByEmail(request.email).isPresent) {
+    private fun normalizeRegistration(request: RegisterRequest): RegisterRequest {
+        val phone = normalizePhone(request.phoneNumber)
+        val normalized = request.copy(
+            fullName = request.fullName.trim(),
+            phoneNumber = phone,
+            email = request.email.trim().lowercase(Locale.ROOT),
+            otp = request.otp.trim()
+        )
+        require(normalized.role != Role.ADMIN) { "Không được đăng ký tài khoản quản trị viên" }
+        require(normalized.fullName.isNotBlank()) { "Vui lòng nhập họ tên" }
+        require(normalized.phoneNumber.matches(Regex("0[35789][0-9]{8}"))) {
+            "Số điện thoại di động Việt Nam không hợp lệ (10 số, bắt đầu bằng 03, 05, 07, 08 hoặc 09)"
+        }
+        require(normalized.email.length <= 254 && normalized.email.matches(Regex("[^\\s@]+@[^\\s@.]+(?:\\.[^\\s@.]+)+"))) {
+            "Địa chỉ email không hợp lệ"
+        }
+        require(normalized.password.matches(Regex("""^(?=.*[A-Za-z])(?=.*[0-9])\S{8,}$"""))) {
+            "Mật khẩu phải từ 8 kí tự, bao gồm số và chữ"
+        }
+        if (userRepository.findByPhoneNumber(normalized.phoneNumber).isPresent) {
+            throw RuntimeException("Số điện thoại đã tồn tại!")
+        }
+        if (userRepository.findByEmail(normalized.email).isPresent) {
             throw RuntimeException("Email này đã được sử dụng bởi tài khoản khác!")
         }
+        return normalized
+    }
 
+    fun requestRegistrationCode(request: RegisterRequest): MessageResponse {
+        val normalized = normalizeRegistration(request)
+        registrationVerificationService.sendCode(normalized.email)
+        return MessageResponse("Mã đăng ký đã gửi tới 23021558@vnu.edu.vn. Mã có hiệu lực trong 5 phút.")
+    }
+
+    fun register(request: RegisterRequest): RegisterResponse {
+        val normalized = normalizeRegistration(request)
+        val encodedPassword = passwordEncoder.encode(normalized.password).toString()
+        registrationVerificationService.consumeCode(normalized.email, normalized.otp)
         val user = User(
-            fullName = request.fullName,
-            phoneNumber = request.phoneNumber,
-            password = passwordEncoder.encode(request.password).toString(),
-            email = request.email,
-            role = request.role
+            fullName = normalized.fullName,
+            phoneNumber = normalized.phoneNumber,
+            password = encodedPassword,
+            email = normalized.email,
+            role = normalized.role
         )
         userRepository.save(user)
-        return RegisterResponse("Đăng kí tài khoản thành công")
+        return RegisterResponse("Xác minh email và đăng ký tài khoản thành công")
     }
 
     @Transactional
     fun login(request: LoginRequest): LoginResponse {
         val user = userRepository.findByPhoneForAuthUpdate(
-            request.phoneNumber
+            normalizePhone(request.phoneNumber)
         ).orElseThrow {
             RuntimeException("Sai số điện thoại hoặc mật khẩu!")
         }

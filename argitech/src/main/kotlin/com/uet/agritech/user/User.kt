@@ -52,6 +52,15 @@ class User(
     )
     var locked: Boolean = false,
 
+    @Column(name = "pickup_address", length = 1000)
+    var pickupAddress: String? = null,
+
+    @Column(name = "pickup_latitude")
+    var pickupLatitude: Double? = null,
+
+    @Column(name = "pickup_longitude")
+    var pickupLongitude: Double? = null,
+
     @Version
     @Column(name = "row_version", nullable = false)
     var rowVersion: Long = 0

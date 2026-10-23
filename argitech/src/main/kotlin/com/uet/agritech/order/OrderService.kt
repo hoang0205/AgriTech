@@ -1,6 +1,9 @@
 package com.uet.agritech.order
 
 import com.uet.agritech.cart.CartItemRepository
+import com.uet.agritech.delivery.DeliveryQuoteRequest
+import com.uet.agritech.delivery.DeliveryQuoteService
+import com.uet.agritech.delivery.DeliveryStatus
 import com.uet.agritech.notification.NotificationService
 import com.uet.agritech.order.dto.BuyerOrderItemDTO
 import com.uet.agritech.order.dto.BuyerOrderResponse
@@ -13,11 +16,14 @@ import com.uet.agritech.product.Product
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.review.ReviewRepository
 import com.uet.agritech.user.RecommendationService
+import com.uet.agritech.user.ShippingAddressRepository
 import com.uet.agritech.user.UserRepository
 import jakarta.persistence.EntityManager
 import jakarta.persistence.LockModeType
+import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import org.springframework.web.server.ResponseStatusException
 
 @Service
 class OrderService(
@@ -29,7 +35,9 @@ class OrderService(
     private val interactionService: RecommendationService,
     private val reviewRepository: ReviewRepository,
     private val notificationService: NotificationService,
-    private val entityManager: EntityManager
+    private val entityManager: EntityManager,
+    private val addressRepository: ShippingAddressRepository,
+    private val deliveryQuoteService: DeliveryQuoteService
 ) {
 
     @Transactional
@@ -39,6 +47,52 @@ class OrderService(
     ): List<Order> {
         val user = userRepository.findByPhoneNumber(userPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
+
+        val addressId = requireNotNull(request.addressId) {
+            "Vui lòng chọn địa chỉ nhận hàng."
+        }
+
+        require(addressId > 0) {
+            "Địa chỉ nhận hàng không hợp lệ."
+        }
+
+        val expectedShippingFee = requireNotNull(
+            request.expectedShippingFee
+        ) {
+            "Vui lòng lấy báo phí giao hàng trước khi đặt hàng."
+        }
+
+        require(expectedShippingFee >= 0) {
+            "Phí giao hàng dự kiến không hợp lệ."
+        }
+
+        val address = addressRepository.findById(addressId)
+            .orElseThrow {
+                ResponseStatusException(
+                    HttpStatus.NOT_FOUND,
+                    "Không tìm thấy địa chỉ nhận hàng."
+                )
+            }
+
+        if (address.user.id != user.id) {
+            throw ResponseStatusException(
+                HttpStatus.FORBIDDEN,
+                "Bạn chỉ được dùng địa chỉ nhận hàng của mình."
+            )
+        }
+
+        entityManager.refresh(
+            address,
+            LockModeType.PESSIMISTIC_READ
+        )
+
+        require(
+            address.receiverName.isNotBlank() &&
+                    address.phoneNumber.isNotBlank() &&
+                    address.addressDetail.isNotBlank()
+        ) {
+            "Thông tin địa chỉ nhận hàng chưa đầy đủ."
+        }
 
         if (request.selectedCartItemIds.isEmpty()) {
             throw RuntimeException("Bạn chưa chọn món nào để thanh toán!")
@@ -91,6 +145,57 @@ class OrderService(
             }
         }
 
+        products.values
+            .map { it.farmer }
+            .distinctBy { it.id }
+            .sortedBy { it.id }
+            .forEach { seller ->
+                entityManager.refresh(
+                    seller,
+                    LockModeType.PESSIMISTIC_READ
+                )
+            }
+
+        val deliveryQuote = deliveryQuoteService.quote(
+            phone = userPhone,
+            request = DeliveryQuoteRequest(
+                addressId = addressId,
+                selectedCartItemIds = selectedIds
+            )
+        )
+
+        val unavailableSellers = deliveryQuote.sellers.filter {
+            it.status != DeliveryStatus.AVAILABLE
+        }
+
+        if (
+            unavailableSellers.isNotEmpty() ||
+            !deliveryQuote.allDeliverable ||
+            deliveryQuote.totalShippingFee == null
+        ) {
+            val details = unavailableSellers.joinToString("; ") {
+                "${it.sellerName}: ${it.message}"
+            }
+
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                details.ifBlank {
+                    "Chưa xác định được phí giao hàng."
+                }
+            )
+        }
+
+        if (deliveryQuote.totalShippingFee != expectedShippingFee) {
+            throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Phí giao hàng đã thay đổi. Vui lòng cập nhật báo phí trước khi đặt hàng."
+            )
+        }
+
+        val deliveryBySeller = deliveryQuote.sellers.associateBy {
+            it.sellerId
+        }
+
         val itemsBySeller = cartItems.groupBy {
             products.getValue(requireNotNull(it.product.id)).farmer.phoneNumber
         }
@@ -126,11 +231,33 @@ class OrderService(
                 products.getValue(requireNotNull(it.product.id)).price * it.quantity
             }
 
+            val sellerDelivery = deliveryBySeller[
+                requireNotNull(seller.id)
+            ] ?: throw ResponseStatusException(
+                HttpStatus.CONFLICT,
+                "Thiếu báo phí giao hàng của người bán."
+            )
+
+            val shippingFee = requireNotNull(
+                sellerDelivery.shippingFee
+            ) {
+                "Chưa xác định được phí giao hàng của người bán."
+            }
+
             val newOrder = Order(
                 user = user,
-                totalAmount = sellerTotal,
-                shippingAddress = request.shippingAddress,
-                phoneNumber = request.phoneNumber
+                totalAmount = sellerTotal + shippingFee.toDouble(),
+                shippingAddress = address.addressDetail,
+                phoneNumber = address.phoneNumber,
+                shippingFee = shippingFee,
+                pickupAddress = seller.pickupAddress,
+                pickupLatitude = seller.pickupLatitude,
+                pickupLongitude = seller.pickupLongitude,
+                deliveryLatitude = address.latitude,
+                deliveryLongitude = address.longitude,
+                receiverName = address.receiverName,
+                paymentMethod = if (isVnpay) "VNPAY" else "COD",
+                deliveryDistanceKm = sellerDelivery.distanceKm
             )
             newOrder.status = initialStatus
 
@@ -232,6 +359,7 @@ class OrderService(
                 orderDate = order.orderDate.toString(),
                 buyerPhone = order.phoneNumber,
                 buyerName = order.user.fullName,
+                receiverName = order.receiverName,
                 buyerId = order.user.id!!,
                 shippingAddress = order.shippingAddress,
                 status = order.status,
@@ -244,7 +372,17 @@ class OrderService(
                         thumbnail = item.product.imageUrls.firstOrNull() ?: ""
                     )
                 },
-                totalRevenueFromThisOrder = items.sumOf { it.price * it.quantity }
+                totalRevenueFromThisOrder = items.sumOf {
+                    it.price * it.quantity
+                },
+                shippingFee = order.shippingFee,
+                pickupAddress = order.pickupAddress,
+                ghnOrderCode = order.ghnOrderCode,
+                ghnStatus = order.ghnStatus,
+                ghnShippingFee = order.ghnShippingFee,
+                deliveryMethod = order.deliveryMethod?.name,
+                actualShippingCost = order.actualShippingCost,
+                ghnPendingCreation = order.ghnRequestJson != null && order.ghnOrderCode == null && !order.isGhnSimulation()
             )
         }.sortedByDescending { it.orderDate }
     }
@@ -276,6 +414,10 @@ class OrderService(
             )
         }
 
+        require(!order.hasActiveGhnShipment()) {
+            "Đơn đã gửi GHN. Hãy cập nhật hoặc hủy vận đơn GHN trước khi đổi trạng thái thủ công."
+        }
+
         val currentStatus = try {
             OrderStatus.valueOf(order.status)
         } catch (e: Exception) {
@@ -295,6 +437,14 @@ class OrderService(
 
         if (!isValidTransition) {
             throw RuntimeException("Quy trình sai")
+        }
+
+        if (newStatus == OrderStatus.SHIPPING || newStatus == OrderStatus.COMPLETED) {
+            // Old orders already in transit may finish using their existing flow.
+            require(order.deliveryMethod == DeliveryMethod.SELF ||
+                (order.deliveryMethod == null && currentStatus == OrderStatus.SHIPPING)) {
+                "Vui lòng chọn Tự tổ chức giao trước khi cập nhật giao hàng thủ công."
+            }
         }
 
         if (newStatus == OrderStatus.CANCELLED) {
@@ -355,6 +505,13 @@ class OrderService(
                 status = order.status,
                 shippingAddress = order.shippingAddress,
                 totalAmount = order.totalAmount,
+                shippingFee = order.shippingFee,
+                pickupAddress = order.pickupAddress,
+                ghnOrderCode = order.ghnOrderCode,
+                ghnStatus = order.ghnStatus,
+                ghnShippingFee = order.ghnShippingFee,
+                ghnPendingCreation = order.ghnRequestJson != null && order.ghnOrderCode == null && !order.isGhnSimulation(),
+                deliveryMethod = order.deliveryMethod?.name,
                 items = orderItems.map { item ->
                     val hasReviewed = reviewRepository.existsByProductIdAndUserId(
                         productId = item.product.id!!,
@@ -396,6 +553,10 @@ class OrderService(
 
         if (order.user.phoneNumber != buyerPhone) {
             throw RuntimeException("Bạn không có quyền hủy đơn hàng này!")
+        }
+
+        require(!order.hasActiveGhnShipment()) {
+            "Đơn đã gửi GHN, cần xử lý vận đơn với người bán trước."
         }
 
         if (order.status != "PENDING" && order.status != "UNPAID") {

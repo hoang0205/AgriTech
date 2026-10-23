@@ -7,7 +7,8 @@ data class RegisterRequest(
     val phoneNumber: String,
     val email: String,
     val password: String,
-    val role: Role
+    val role: Role,
+    val otp: String = ""
 )
 
 data class RegisterResponse(
@@ -73,6 +74,8 @@ data class AddressRequest(
     val receiverPhone: String,
     val detail: String,
     val isDefault: Boolean = false,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )
 
 data class UpdateProfileRequest(

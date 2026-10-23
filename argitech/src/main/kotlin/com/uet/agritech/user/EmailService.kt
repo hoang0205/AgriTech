@@ -7,6 +7,20 @@ import org.springframework.stereotype.Service
 @Service
 class EmailService(private val mailSender: JavaMailSender) {
 
+    fun sendRegistrationOtpEmail(accountEmail: String, otp: String) {
+        val message = SimpleMailMessage()
+        message.from = "doanhoang670@gmail.com"
+        // Demo recipient is fixed; accountEmail remains the identity being registered.
+        message.setTo("23021558@vnu.edu.vn")
+        message.subject = "[AgriTech] Mã xác minh đăng ký tài khoản"
+        message.text = """
+            Bạn đang đăng ký tài khoản AgriTech với email: $accountEmail
+            Mã xác minh của bạn là: $otp
+            Mã có hiệu lực trong 5 phút và chỉ dùng một lần.
+        """.trimIndent()
+        mailSender.send(message)
+    }
+
     fun sendOtpEmail(toEmail: String, otp: String) {
         val message = SimpleMailMessage()
         message.from = "doanhoang670@gmail.com"

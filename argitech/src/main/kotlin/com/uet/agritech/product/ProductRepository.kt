@@ -14,13 +14,54 @@ import java.util.Optional
 @Repository
 interface ProductRepository : JpaRepository<Product, String> {
 
+    @Query(
+        value = """
+            SELECT p.*,
+                CASE WHEN u.pickup_address IS NOT NULL AND TRIM(u.pickup_address) <> ''
+                    AND u.pickup_latitude BETWEEN -90 AND 90
+                    AND u.pickup_longitude BETWEEN -180 AND 180
+                THEN 12742 * ASIN(SQRT(LEAST(1.0, GREATEST(0.0,
+                    POWER(SIN(RADIANS(u.pickup_latitude - :latitude) / 2), 2)
+                    + COS(RADIANS(:latitude)) * COS(RADIANS(u.pickup_latitude))
+                    * POWER(SIN(RADIANS(u.pickup_longitude - :longitude) / 2), 2)
+                )))) ELSE NULL END AS delivery_distance_km
+            FROM products p JOIN users u ON u.id = p.farmer_id
+            WHERE p.hidden = false
+                AND p.farmer_id <> :buyerId
+                AND (:category IS NULL OR p.category = :category)
+                AND (:pattern IS NULL OR LOWER(p.name) LIKE LOWER(:pattern) ESCAPE '!')
+            ORDER BY CASE WHEN p.quantity > 0 THEN 0 ELSE 1 END,
+                CASE WHEN delivery_distance_km IS NULL THEN 1 ELSE 0 END,
+                delivery_distance_km ASC, p.id ASC
+        """,
+        countQuery = """
+            SELECT COUNT(*) FROM products p JOIN users u ON u.id = p.farmer_id
+            WHERE p.hidden = false
+                AND p.farmer_id <> :buyerId
+                AND (:category IS NULL OR p.category = :category)
+                AND (:pattern IS NULL OR LOWER(p.name) LIKE LOWER(:pattern) ESCAPE '!')
+        """,
+        nativeQuery = true
+    )
+    fun findProductsByDistance(
+        @Param("buyerId") buyerId: String,
+        @Param("latitude") latitude: Double,
+        @Param("longitude") longitude: Double,
+        @Param("category") category: String?,
+        @Param("pattern") pattern: String?,
+        pageable: Pageable
+    ): Page<Product>
+
+    @Query("SELECT p FROM Product p WHERE p.hidden = false ORDER BY CASE WHEN p.quantity > 0 THEN 0 ELSE 1 END, p.id ASC")
     fun findByHiddenFalse(pageable: Pageable): Page<Product>
 
+    @Query("SELECT p FROM Product p WHERE p.hidden = false AND p.farmer.id = :farmerId ORDER BY CASE WHEN p.quantity > 0 THEN 0 ELSE 1 END, p.id DESC")
     fun findByFarmerIdAndHiddenFalse(
         farmerId: String,
         pageable: Pageable
     ): Page<Product>
 
+    @Query("SELECT p FROM Product p WHERE p.hidden = false AND p.category = :category ORDER BY CASE WHEN p.quantity > 0 THEN 0 ELSE 1 END, p.id DESC")
     fun findByCategoryAndHiddenFalse(
         category: String,
         pageable: Pageable
@@ -38,7 +79,7 @@ interface ProductRepository : JpaRepository<Product, String> {
     @Query(
         value = """
             SELECT * FROM products
-            WHERE hidden = false
+            WHERE hidden = false AND quantity > 0
             ORDER BY RAND()
             LIMIT :limit
         """,
@@ -54,6 +95,7 @@ interface ProductRepository : JpaRepository<Product, String> {
         WHERE p.hidden = false
           AND LOWER(p.name) LIKE LOWER(:pattern) ESCAPE '!'
           AND (:farmerId IS NULL OR p.farmer.id = :farmerId)
+        ORDER BY CASE WHEN p.quantity > 0 THEN 0 ELSE 1 END, p.id DESC
         """
     )
     fun searchProducts(

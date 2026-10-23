@@ -17,7 +17,9 @@ data class ProductReportResponse(
     val status: ReportStatus,
     val adminReply: String?,
     val createdAt: String,
-    val productHidden: Boolean? = null
+    val productHidden: Boolean? = null,
+    val reporterId: String = "",
+    val reporterName: String = ""
 )
 
 data class UpdateProductReportRequest(

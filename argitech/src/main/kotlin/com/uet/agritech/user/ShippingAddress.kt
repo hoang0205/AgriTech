@@ -25,7 +25,13 @@ class ShippingAddress(
     var addressDetail: String,
 
     @Column(nullable = false)
-    var isDefault: Boolean = false
+    var isDefault: Boolean = false,
+
+    @Column(nullable = true)
+    var latitude: Double? = null,
+
+    @Column(nullable = true)
+    var longitude: Double? = null
 )
 
 data class ShippingAddressResponse(
@@ -33,5 +39,7 @@ data class ShippingAddressResponse(
     val receiverName: String,
     val phoneNumber: String,
     val addressDetail: String,
-    val isDefault: Boolean
+    val isDefault: Boolean,
+    val latitude: Double? = null,
+    val longitude: Double? = null
 )

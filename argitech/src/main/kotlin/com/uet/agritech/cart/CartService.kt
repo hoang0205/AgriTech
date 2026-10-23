@@ -171,7 +171,9 @@ class CartService(
                 totalPrice = item.product.price * item.quantity,
                 farmerId = item.product.farmer.id!!,
                 farmerName = item.product.farmer.fullName,
-                farmerPhone = item.product.farmer.phoneNumber
+                farmerPhone = item.product.farmer.phoneNumber,
+                availableQuantity = item.product.quantity,
+                available = !item.product.hidden && item.product.quantity > 0.0
             )
         }
     }

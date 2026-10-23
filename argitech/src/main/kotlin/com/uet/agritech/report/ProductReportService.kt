@@ -1,5 +1,10 @@
 package com.uet.agritech.report
 
+import com.uet.agritech.admin.AdminAuditAction
+import com.uet.agritech.admin.AdminAuditService
+import com.uet.agritech.admin.AdminAuditTarget
+import com.uet.agritech.notification.NotificationService
+
 import com.uet.agritech.product.ProductRepository
 import com.uet.agritech.user.UserRepository
 import org.springframework.data.domain.Page
@@ -14,7 +19,9 @@ import org.springframework.web.server.ResponseStatusException
 class ProductReportService(
     private val reportRepository: ProductReportRepository,
     private val productRepository: ProductRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val auditService: AdminAuditService,
+    private val notificationService: NotificationService
 ) {
     @Transactional
     fun create(
@@ -156,13 +163,33 @@ class ProductReportService(
             "Cần nhập phản hồi khi giải quyết hoặc từ chối báo cáo"
         }
 
+        val previousStatus = report.status
+        val previousReply = report.adminReply
+
         report.status = request.status
 
         if (reply != null) {
             report.adminReply = reply
         }
 
-        return toResponse(reportRepository.save(report))
+        val savedReport = reportRepository.save(report)
+
+        if (previousStatus != report.status || previousReply != report.adminReply) {
+            auditService.record(
+                action = AdminAuditAction.REPORT_UPDATE,
+                targetType = AdminAuditTarget.REPORT,
+                targetId = requireNotNull(report.id).toString(),
+                targetName = "Báo cáo #${report.id} - ${report.productName}",
+                beforeState = "Trạng thái: $previousStatus\nPhản hồi: ${previousReply.orEmpty()}",
+                afterState = "Trạng thái: ${report.status}\nPhản hồi: ${report.adminReply.orEmpty()}"
+            )
+            notificationService.sendReportStatusNotification(
+                report.reporterId, requireNotNull(report.id), report.status.name,
+                report.productName, report.adminReply
+            )
+        }
+
+        return toResponse(savedReport)
     }
 
     @Transactional(readOnly = true)
@@ -231,6 +258,9 @@ class ProductReportService(
     private fun toResponse(
         report: ProductReport
     ): ProductReportResponse {
+        val reporter = userRepository.findById(report.reporterId)
+            .orElse(null)
+
         return ProductReportResponse(
             id = requireNotNull(report.id),
             productId = report.productId,
@@ -243,7 +273,10 @@ class ProductReportService(
             createdAt = report.createdAt.toString(),
             productHidden = productRepository.findById(report.productId)
                 .orElse(null)
-                ?.hidden
+                ?.hidden,
+            reporterId = report.reporterId,
+            reporterName = reporter?.fullName
+                ?: "Tài khoản không còn tồn tại"
         )
     }
 
@@ -272,8 +305,21 @@ class ProductReportService(
                 )
             }
 
+        val previousHidden = product.hidden
         product.hidden = hidden
         productRepository.save(product)
+
+        if (previousHidden != hidden) {
+            auditService.record(
+                action = if (hidden) AdminAuditAction.PRODUCT_HIDE else AdminAuditAction.PRODUCT_SHOW,
+                targetType = AdminAuditTarget.PRODUCT,
+                targetId = requireNotNull(product.id),
+                targetName = product.name,
+                beforeState = if (previousHidden) "Đang ẩn" else "Đang hiển thị",
+                afterState = if (hidden) "Đang ẩn" else "Đang hiển thị",
+                relatedReportId = requireNotNull(report.id).toString()
+            )
+        }
 
         return toResponse(report)
     }

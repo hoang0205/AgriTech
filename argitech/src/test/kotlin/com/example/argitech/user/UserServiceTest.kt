@@ -49,7 +49,9 @@ class UserServiceTest {
         service = UserService(
             userRepository,
             mockk<JwtService>(),
-            passwordEncoder
+            passwordEncoder,
+            mockk<jakarta.persistence.EntityManager>(relaxUnitFun = true),
+            mockk<FirebaseSessionService>(relaxUnitFun = true)
         )
     }
 

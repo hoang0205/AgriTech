@@ -34,6 +34,7 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests { auth ->
                 auth.requestMatchers("/api/auth/**").permitAll()
+                auth.requestMatchers(HttpMethod.GET, "/api/orders/vnpay/ipn").permitAll()
                 auth.requestMatchers("/v3/api-docs/**", "/swagger-ui/**").permitAll()
 
                 auth.requestMatchers(HttpMethod.GET, "/api/products/**").authenticated()

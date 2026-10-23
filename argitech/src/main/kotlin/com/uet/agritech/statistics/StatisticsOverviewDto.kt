@@ -20,7 +20,8 @@ data class StatisticsOrderItemDto(
     val unit: String,
     val unitPrice: Double,
 
-    val amount: Double?
+    val amount: Double?,
+    val imageUrl: String? = null
 )
 
 data class StatisticsOrderDto(
@@ -28,7 +29,13 @@ data class StatisticsOrderDto(
     val orderDate: String,
     val amount: Double,
     val missingCostItems: Int,
-    val items: List<StatisticsOrderItemDto>
+    val items: List<StatisticsOrderItemDto>,
+    val buyerName: String? = null,
+    val buyerAvatar: String? = null,
+    val buyerPhone: String? = null,
+    val sellerName: String? = null,
+    val sellerAvatar: String? = null,
+    val sellerPhone: String? = null
 )
 
 data class StatisticsSectionDto(
@@ -50,5 +57,7 @@ data class StatisticsOverviewDto(
     val selectedMonth: Int?,
     val revenue: StatisticsSectionDto?,
     val profit: StatisticsSectionDto?,
-    val spending: StatisticsSectionDto
+    val spending: StatisticsSectionDto,
+    val sellerFinance: SellerFinanceSummary? = null,
+    val sellerTax: SellerTaxEstimate? = null
 )

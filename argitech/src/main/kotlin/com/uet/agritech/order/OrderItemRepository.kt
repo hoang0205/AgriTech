@@ -4,6 +4,7 @@ import com.uet.agritech.order.dto.CategoryRevenueDto
 import com.uet.agritech.product.Product
 import com.uet.agritech.user.User
 import org.springframework.data.domain.Pageable
+import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -72,5 +73,17 @@ interface OrderItemRepository : JpaRepository<OrderItem, Long> {
         @Param("buyer") buyer: User,
         @Param("start") start: LocalDateTime,
         @Param("end") end: LocalDateTime
+    ): List<OrderItem>
+
+    @EntityGraph(attributePaths = ["product", "product.imageUrls"])
+    @Query(
+        """
+    SELECT DISTINCT i FROM OrderItem i
+    WHERE i.order.id IN :orderIds
+    ORDER BY i.id ASC
+    """
+    )
+    fun findForAdminOrderIds(
+        @Param("orderIds") orderIds: List<Long>
     ): List<OrderItem>
 }

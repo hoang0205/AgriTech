@@ -16,7 +16,9 @@ data class CartResponse(
     val totalPrice: Double,
     val farmerId: String,
     val farmerName: String,
-    val farmerPhone: String
+    val farmerPhone: String,
+    val availableQuantity: Double,
+    val available: Boolean
 )
 
 data class UpdateCartRequest(

@@ -1,5 +1,7 @@
 package com.uet.agritech.product.dto
 
+import com.uet.agritech.delivery.DeliveryStatus
+
 data class ProductRequest(
     val name: String,
     val category: String,
@@ -27,7 +29,9 @@ data class ProductResponse(
     val rating: Double,
     val reviewCount: Int,
     val aiPros: String? = null,
-    val aiCons: String? = null
+    val aiCons: String? = null,
+    val distanceKm: Double? = null,
+    val deliveryStatus: DeliveryStatus? = null
 )
 
 data class UpdateProductCostRequest(

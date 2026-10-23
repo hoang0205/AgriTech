@@ -88,19 +88,20 @@ class OrderController(
         @PathVariable id: Long,
         request: jakarta.servlet.http.HttpServletRequest
     ): ResponseEntity<Map<String, String>> {
-        val order = orderRepository.findById(id)
-            .orElseThrow { RuntimeException("Không tìm thấy đơn hàng #$id") }
-
-        val ipAddress = request.remoteAddr ?: "127.0.0.1"
-
-        val paymentUrl = vnpayService.createPaymentUrl(
-            orderId = order.id,
-            amount = order.totalAmount.toLong(),
-            ipAddress = ipAddress
-        )
-
-        println("LINK VNPAY: $paymentUrl")
+        val phone = (SecurityContextHolder.getContext().authentication?.name ?: throw IllegalStateException("Chưa đăng nhập"))
+        val paymentUrl = vnpayService.createForOrder(id, phone, request.remoteAddr ?: "127.0.0.1")
         return ResponseEntity.ok(mapOf("paymentUrl" to paymentUrl))
+    }
+
+    @GetMapping("/vnpay/ipn")
+    fun vnpayIpn(@RequestParam params: Map<String, String>): Map<String, String> = vnpayService.processResult(params)
+
+    @PostMapping("/{id}/vnpay-result")
+    fun verifyVnpay(@PathVariable id: Long, @RequestBody params: Map<String, String>): ResponseEntity<Map<String, String>> {
+        val result = vnpayService.processResult(params, id, (SecurityContextHolder.getContext().authentication?.name ?: throw IllegalStateException("Chưa đăng nhập")))
+        if (result["RspCode"] != "00") return ResponseEntity.badRequest().body(mapOf("message" to result.getValue("Message")))
+        return if (params["vnp_ResponseCode"] == "00" && params["vnp_TransactionStatus"] == "00") ResponseEntity.ok(mapOf("message" to "Payment verified"))
+        else ResponseEntity.badRequest().body(mapOf("message" to "Payment failed"))
     }
 
     @PutMapping("/{id}/mark-as-paid")

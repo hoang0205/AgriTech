@@ -8,6 +8,11 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/auth")
 class AuthController(private val authService: AuthService) {
 
+    @PostMapping("/register/code")
+    fun requestRegistrationCode(@RequestBody request: RegisterRequest): ResponseEntity<MessageResponse> {
+        return ResponseEntity.ok(authService.requestRegistrationCode(request))
+    }
+
     @PostMapping("/register")
     fun register(@RequestBody request: RegisterRequest): ResponseEntity<RegisterResponse> {
         return ResponseEntity.ok(authService.register(request))

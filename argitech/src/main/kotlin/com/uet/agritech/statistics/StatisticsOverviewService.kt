@@ -8,6 +8,7 @@ import com.uet.agritech.statistics.StatisticsOrderItemDto
 import com.uet.agritech.statistics.StatisticsOverviewDto
 import com.uet.agritech.statistics.StatisticsOverviewRepository
 import com.uet.agritech.statistics.StatisticsSectionDto
+import com.uet.agritech.statistics.statisticsCostPrice
 import com.uet.agritech.user.Role
 import com.uet.agritech.user.UserRepository
 import org.springframework.http.HttpStatus
@@ -71,6 +72,11 @@ class StatisticsOverviewService(
             end = end
         )
 
+        val financeItems = statisticsRepository.findSellerFinanceItems(user, start, end)
+        val finance = com.uet.agritech.statistics.SellerFinanceCalculator.calculate(financeItems, month)
+        val annualFinance = if (month == null) finance else
+            com.uet.agritech.statistics.SellerFinanceCalculator.calculate(financeItems, null)
+
         return StatisticsOverviewDto(
             year = year,
             selectedMonth = month,
@@ -83,6 +89,10 @@ class StatisticsOverviewService(
                 sellerItems,
                 month,
                 StatisticsKind.PROFIT
+            ),
+            sellerFinance = finance,
+            sellerTax = com.uet.agritech.statistics.SellerTaxCalculator.calculate(
+                sellerItems, year, annualFinance.profitAfterShipping
             ),
             spending = buildSection(
                 buyerItems,
@@ -125,9 +135,7 @@ class StatisticsOverviewService(
             .map { (category, items) ->
                 StatisticsCategoryDto(
                     category = category,
-                    amount = items.sumOf {
-                        itemAmount(it, kind) ?: 0.0
-                    },
+                    amount = items.sumOf { itemAmount(it, kind) ?: 0.0 },
                     missingCostItems = missingCostCount(items, kind)
                 )
             }
@@ -137,12 +145,21 @@ class StatisticsOverviewService(
             .groupBy { requireNotNull(it.order.id) }
             .map { (orderId, items) ->
                 val order = items.first().order
+                val sellers = if (kind == StatisticsKind.SPENDING)
+                    items.map { it.product.farmer }.distinctBy { it.id } else emptyList()
+                val seller = sellers.singleOrNull()
 
                 StatisticsOrderDto(
                     orderId = orderId,
                     orderDate = order.orderDate.toString(),
                     amount = totalAmount(items, kind),
                     missingCostItems = missingCostCount(items, kind),
+                    buyerName = order.user.fullName.takeUnless { kind == StatisticsKind.SPENDING },
+                    buyerAvatar = order.user.avatarUrl.takeUnless { kind == StatisticsKind.SPENDING },
+                    buyerPhone = order.phoneNumber.takeUnless { kind == StatisticsKind.SPENDING },
+                    sellerName = if (kind == StatisticsKind.SPENDING) sellers.joinToString(", ") { it.fullName } else null,
+                    sellerAvatar = seller?.avatarUrl.takeIf { kind == StatisticsKind.SPENDING },
+                    sellerPhone = seller?.phoneNumber.takeIf { kind == StatisticsKind.SPENDING },
                     items = items.map { item ->
                         StatisticsOrderItemDto(
                             productId = requireNotNull(item.product.id),
@@ -150,16 +167,15 @@ class StatisticsOverviewService(
                             quantity = item.quantity,
                             unit = item.product.unit,
                             unitPrice = item.price,
-                            amount = itemAmount(item, kind)
+                            amount = itemAmount(item, kind),
+                            imageUrl = item.product.imageUrls.firstOrNull()
                         )
                     }
                 )
             }
             .sortedByDescending { it.orderDate }
 
-        val knownCostItems = selectedItems.filter {
-            it.costPrice != null
-        }
+        val knownCostItems = selectedItems.filter { item -> item.costPrice?.let { it.isFinite() && it >= 0.0 } == true }
 
         return StatisticsSectionDto(
             totalAmount = totalAmount(selectedItems, kind),
@@ -192,9 +208,7 @@ class StatisticsOverviewService(
             StatisticsKind.SPENDING -> item.price * item.quantity
 
             StatisticsKind.PROFIT -> {
-                item.costPrice?.let { cost ->
-                    (item.price - cost) * item.quantity
-                }
+                (item.price - item.statisticsCostPrice()) * item.quantity
             }
         }
     }
@@ -225,7 +239,7 @@ class StatisticsOverviewService(
         kind: StatisticsKind
     ): Int {
         return if (kind == StatisticsKind.PROFIT) {
-            items.count { it.costPrice == null }
+            items.count { item -> item.costPrice?.let { it.isFinite() && it >= 0.0 } != true }
         } else {
             0
         }

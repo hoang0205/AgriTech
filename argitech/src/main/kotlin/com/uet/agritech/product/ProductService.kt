@@ -7,7 +7,6 @@ import com.uet.agritech.user.Role
 import com.uet.agritech.user.UserRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 import org.springframework.http.HttpStatus
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Service
@@ -48,6 +47,27 @@ class ProductService(
                 HttpStatus.FORBIDDEN,
                 "Tài khoản không có quyền đăng bán sản phẩm"
             )
+        }
+
+        if (farmer.role == Role.FARMER) {
+            val latitude = farmer.pickupLatitude
+            val longitude = farmer.pickupLongitude
+
+            val hasPickupLocation =
+                !farmer.pickupAddress.isNullOrBlank() &&
+                        latitude != null &&
+                        longitude != null &&
+                        latitude.isFinite() &&
+                        longitude.isFinite() &&
+                        latitude in -90.0..90.0 &&
+                        longitude in -180.0..180.0
+
+            if (!hasPickupLocation) {
+                throw ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Bạn cần cập nhật địa chỉ và vị trí lấy hàng trước khi đăng bán."
+                )
+            }
         }
 
         val name = request.name.trim()
@@ -127,7 +147,7 @@ class ProductService(
     }
 
     fun getAllProducts(page: Int, size: Int): Page<ProductResponse> {
-        val pageable = PageRequest.of(page, size, Sort.by("id").ascending())
+        val pageable = PageRequest.of(page, size)
 
         val productPage = productRepository.findByHiddenFalse(pageable)
 
@@ -175,7 +195,7 @@ class ProductService(
     }
 
     fun getProductsByCategory(category: String, page: Int, size: Int): Page<ProductResponse> {
-        val pageable = PageRequest.of(page, size, Sort.by("id").descending())
+        val pageable = PageRequest.of(page, size)
 
         val productPage = productRepository.findByCategoryAndHiddenFalse(
             category,
@@ -227,8 +247,7 @@ class ProductService(
         val normalizedFarmerId = normalizeSearchFarmerId(farmerId)
         val pageable = PageRequest.of(
             page,
-            size,
-            Sort.by("id").descending()
+            size
         )
 
         if (normalizedKeyword.isEmpty()) {
@@ -351,7 +370,7 @@ class ProductService(
     }
 
     fun getProductsByFarmerId(farmerId: String, page: Int, size: Int): Page<ProductResponse> {
-        val pageable = PageRequest.of(page, size, Sort.by("id").descending())
+        val pageable = PageRequest.of(page, size)
 
         val productPage = productRepository.findByFarmerIdAndHiddenFalse(
             farmerId,

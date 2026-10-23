@@ -1,10 +1,12 @@
 package com.uet.agritech.order.dto
 
 data class CheckoutRequest(
-    val shippingAddress: String,
-    val phoneNumber: String,
+    val shippingAddress: String = "",
+    val phoneNumber: String = "",
     val selectedCartItemIds: List<Long>,
-    val paymentMethod: String? = "COD"
+    val paymentMethod: String? = "COD",
+    val addressId: Long? = null,
+    val expectedShippingFee: Long? = null
 )
 
 data class FarmerOrderResponse(
@@ -16,7 +18,16 @@ data class FarmerOrderResponse(
     val shippingAddress: String,
     val status: String,
     val items: List<FarmerOrderItemDTO>,
-    val totalRevenueFromThisOrder: Double
+    val totalRevenueFromThisOrder: Double,
+    val shippingFee: Long = 0,
+    val pickupAddress: String? = null,
+    val ghnOrderCode: String? = null,
+    val ghnStatus: String? = null,
+    val ghnShippingFee: Long? = null,
+    val ghnPendingCreation: Boolean = false,
+    val deliveryMethod: String? = null,
+    val actualShippingCost: Long? = null,
+    val receiverName: String? = null
 )
 
 data class FarmerOrderItemDTO(
@@ -51,7 +62,14 @@ data class BuyerOrderResponse(
     val status: String,
     val shippingAddress: String,
     val totalAmount: Double,
-    val items: List<BuyerOrderItemDTO>
+    val items: List<BuyerOrderItemDTO>,
+    val shippingFee: Long = 0,
+    val pickupAddress: String? = null,
+    val ghnOrderCode: String? = null,
+    val ghnStatus: String? = null,
+    val ghnShippingFee: Long? = null,
+    val ghnPendingCreation: Boolean = false,
+    val deliveryMethod: String? = null
 )
 
 data class BuyerOrderItemDTO(

@@ -1,6 +1,9 @@
 package com.uet.agritech.order
 
 import com.uet.agritech.cart.CartItem
+import com.uet.agritech.delivery.*
+import com.uet.agritech.user.ShippingAddress
+import com.uet.agritech.user.ShippingAddressRepository
 import com.uet.agritech.cart.CartItemRepository
 import com.uet.agritech.notification.NotificationService
 import com.uet.agritech.order.dto.CheckoutRequest
@@ -19,6 +22,7 @@ import org.junit.jupiter.api.Test
 import java.util.Optional
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNull
 
 class OrderServiceTest {
 
@@ -28,6 +32,8 @@ class OrderServiceTest {
     private lateinit var productRepository: ProductRepository
     private lateinit var userRepository: UserRepository
     private lateinit var entityManager: EntityManager
+    private val addresses = mockk<ShippingAddressRepository>()
+    private val delivery = mockk<DeliveryQuoteService>()
     private lateinit var service: OrderService
 
     private lateinit var buyer: User
@@ -57,7 +63,9 @@ class OrderServiceTest {
             notificationService = mockk<NotificationService>(
                 relaxUnitFun = true
             ),
-            entityManager = entityManager
+            entityManager = entityManager,
+            addressRepository = addresses,
+            deliveryQuoteService = delivery
         )
 
         buyer = User(
@@ -95,7 +103,20 @@ class OrderServiceTest {
             totalAmount = 40000.0,
             shippingAddress = "Dia chi test",
             phoneNumber = buyer.phoneNumber,
-            status = "PENDING"
+            status = "PENDING",
+            deliveryMethod = DeliveryMethod.SELF
+        )
+
+        every { addresses.findById(1L) } returns Optional.of(ShippingAddress(
+            id = 1L, user = buyer, receiverName = "Receiver", phoneNumber = buyer.phoneNumber,
+            addressDetail = "Dia chi test", latitude = 21.0, longitude = 105.0
+        ))
+        every { delivery.quote(any(), any()) } returns DeliveryQuoteResponse(
+            addressId = 1L, maxDistanceKm = 30.0,
+            sellers = listOf(SellerDeliveryQuote(sellerId = "seller-1", sellerName = "Farmer Test",
+                cartItemIds = listOf(1L), status = DeliveryStatus.AVAILABLE,
+                message = "OK", shippingFee = 15000)),
+            allDeliverable = true, totalShippingFee = 15000
         )
 
         every {
@@ -130,7 +151,10 @@ class OrderServiceTest {
                     totalAmount = input.totalAmount,
                     shippingAddress = input.shippingAddress,
                     phoneNumber = input.phoneNumber,
-                    status = input.status
+                    status = input.status,
+                    shippingFee = input.shippingFee,
+                    receiverName = input.receiverName,
+                    paymentMethod = input.paymentMethod
                 )
             }
         }
@@ -172,7 +196,10 @@ class OrderServiceTest {
 
         assertEquals(1, result.size)
         assertEquals("PENDING", result.single().status)
-        assertEquals(50000.0, result.single().totalAmount)
+        assertEquals(65000.0, result.single().totalAmount)
+        assertEquals(15000L, result.single().shippingFee)
+        assertEquals("Receiver", result.single().receiverName)
+        assertEquals("COD", result.single().paymentMethod)
         assertEquals(7.5, product.quantity)
 
         verify(exactly = 1) {
@@ -181,6 +208,26 @@ class OrderServiceTest {
         verify(exactly = 1) {
             cartRepository.deleteAll(listOf(item))
         }
+    }
+
+    @Test
+    fun `checkout freezes cost per order and only new orders use edited product cost`() {
+        every { cartRepository.findAllForCheckout(listOf(1L)) } returns listOf(cartItem(id = 1L, quantity = 1.0))
+        val captured = mutableListOf<List<OrderItem>>()
+        every { orderItemRepository.saveAll(capture(captured)) } answers { firstArg<List<OrderItem>>() }
+
+        product.costPrice = null
+        service.checkout(checkoutRequest(1L), buyer.phoneNumber)
+        captured[0].single().order.status = "COMPLETED"
+        product.costPrice = 12000.0
+        service.checkout(checkoutRequest(1L), buyer.phoneNumber)
+        captured[1].single().order.status = "COMPLETED"
+        product.costPrice = 15000.0
+        service.checkout(checkoutRequest(1L), buyer.phoneNumber)
+
+        assertNull(captured[0].single().costPrice)
+        assertEquals(12000.0, captured[1].single().costPrice)
+        assertEquals(15000.0, captured[2].single().costPrice)
     }
 
     @Test
@@ -193,6 +240,30 @@ class OrderServiceTest {
         }
 
         verifyNoCheckoutWrites()
+    }
+
+    @Test
+    fun `stock zero rejects an existing cart item`() {
+        product.quantity = 0.0
+        val item = cartItem(id = 1L, quantity = 1.0)
+        every { cartRepository.findAllForCheckout(listOf(1L)) } returns listOf(item)
+        assertFailsWith<RuntimeException> {
+            service.checkout(checkoutRequest(1L), buyer.phoneNumber)
+        }
+        assertEquals(0.0, product.quantity)
+        verifyNoCheckoutWrites()
+    }
+
+    @Test
+    fun `buying remaining stock preserves product at zero`() {
+        product.quantity = 2.5
+        val item = cartItem(id = 1L, quantity = 2.5)
+        every { cartRepository.findAllForCheckout(listOf(1L)) } returns listOf(item)
+        service.checkout(checkoutRequest(1L), buyer.phoneNumber)
+        assertEquals(0.0, product.quantity)
+        assertEquals(false, product.hidden)
+        verify(exactly = 1) { productRepository.save(product) }
+        verify(exactly = 0) { productRepository.delete(any()) }
     }
 
     @Test
@@ -313,7 +384,7 @@ class OrderServiceTest {
         )
 
         assertEquals(1, result.size)
-        assertEquals(40000.0, result.single().totalAmount)
+        assertEquals(55000.0, result.single().totalAmount)
         assertEquals(8.0, product.quantity)
 
         verify(exactly = 1) {
@@ -499,6 +570,66 @@ class OrderServiceTest {
         }
     }
 
+    @Test
+    fun `manual delivery and cancellation blocked while GHN intent is unresolved`() {
+        order.status = "CONFIRMED"
+        order.ghnRequestJson = "{}"
+        order.ghnStatus = "creating"
+        assertFailsWith<IllegalArgumentException> {
+            service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
+        }
+        assertFailsWith<IllegalArgumentException> {
+            service.updateStatus(100L, OrderStatus.CANCELLED, seller.phoneNumber)
+        }
+        assertEquals("CONFIRMED", order.status)
+        verify(exactly = 0) { orderRepository.save(any()) }
+    }
+
+    @Test
+    fun `seller must choose self delivery before manual handover`() {
+        order.status = "CONFIRMED"
+        order.deliveryMethod = null
+        assertFailsWith<IllegalArgumentException> {
+            service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
+        }
+        order.deliveryMethod = DeliveryMethod.GHN
+        assertFailsWith<IllegalArgumentException> {
+            service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
+        }
+        order.deliveryMethod = DeliveryMethod.SELF
+        service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
+        assertEquals("SHIPPING", order.status)
+    }
+
+    @Test
+    fun `seller can complete a reference quote order or an explicitly opted in staging simulation`() {
+        for (simulation in listOf(false, true)) {
+            order.status = "CONFIRMED"
+            order.deliveryMethod = DeliveryMethod.SELF
+            order.ghnStatus = if (simulation) "simulation" else "quote_only"
+            order.ghnEnvironment = "staging"
+            order.ghnRequestJson = if (simulation) "{}" else null
+            order.ghnShippingFee = 64900
+            service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
+            service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+            assertEquals("COMPLETED", order.status)
+            assertEquals(64900L, order.ghnShippingFee)
+            assertNull(order.actualShippingCost)
+        }
+    }
+
+    @Test
+    fun `buyer sees chosen delivery method and GHN tracking on their order`() {
+        order.deliveryMethod = DeliveryMethod.GHN
+        order.ghnOrderCode = "TRACK123"
+        order.ghnStatus = "ready_to_pick"
+        every { orderRepository.findAllByUserOrderByOrderDateDesc(buyer) } returns listOf(order)
+        every { orderItemRepository.findAllByOrder(order) } returns emptyList()
+        val response = service.getMyOrders(buyer.phoneNumber).single()
+        assertEquals("GHN", response.deliveryMethod)
+        assertEquals("TRACK123", response.ghnOrderCode)
+    }
+
     private fun cartItem(id: Long, quantity: Double) =
         CartItem(
             id = id,
@@ -512,8 +643,28 @@ class OrderServiceTest {
             shippingAddress = "Dia chi test",
             phoneNumber = buyer.phoneNumber,
             selectedCartItemIds = ids.toList(),
-            paymentMethod = "COD"
+            paymentMethod = "COD",
+            addressId = 1L,
+            expectedShippingFee = 15000
         )
+
+    @Test
+    fun `seller orders include saved recipient separate from buyer account`() {
+        val recipientOrder = Order(
+            id = 101L, user = buyer, totalAmount = 40000.0,
+            shippingAddress = "Saved delivery address", phoneNumber = "0900000099",
+            receiverName = "Different recipient"
+        )
+        val item = OrderItem(order = recipientOrder, product = product, quantity = 2.0, price = 20000.0)
+        every { userRepository.findByPhoneNumber(seller.phoneNumber) } returns Optional.of(seller)
+        every { orderItemRepository.findAllByProductFarmer(seller) } returns listOf(item)
+
+        val response = service.getOrdersForFarmer(seller.phoneNumber).single()
+        assertEquals("Different recipient", response.receiverName)
+        assertEquals("0900000099", response.buyerPhone)
+        assertEquals("Saved delivery address", response.shippingAddress)
+        assertEquals(buyer.fullName, response.buyerName)
+    }
 
     private fun verifyNoCheckoutWrites() {
         verify(exactly = 0) {

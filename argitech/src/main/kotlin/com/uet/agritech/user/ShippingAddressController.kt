@@ -19,15 +19,40 @@ class ShippingAddressController(private val service: ShippingAddressService) {
     fun addAddress(@RequestBody request: AddressRequest) : MessageResponse {
         val phone = SecurityContextHolder.getContext().authentication?.name
         service.addAddress(
-            phone.toString(),
-            request.receiverName,
-            request.receiverPhone,
-            request.detail,
-            request.isDefault
+            phone = phone.toString(),
+            receiverName = request.receiverName,
+            receiverPhone = request.receiverPhone,
+            detail = request.detail,
+            isDefault = request.isDefault,
+            latitude = request.latitude,
+            longitude = request.longitude
         )
         return MessageResponse("Thêm địa chỉ thành công")
     }
 
+
+    @PutMapping("/{id}")
+    fun updateAddress(@PathVariable id: Long, @RequestBody request: AddressRequest): MessageResponse {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+        service.updateAddress(
+            phone = phone.toString(),
+            addressId = id,
+            receiverName = request.receiverName,
+            receiverPhone = request.receiverPhone,
+            detail = request.detail,
+            isDefault = request.isDefault,
+            latitude = request.latitude,
+            longitude = request.longitude
+        )
+        return MessageResponse("Cập nhật địa chỉ thành công")
+    }
+
+    @DeleteMapping("/{id}")
+    fun deleteAddress(@PathVariable id: Long): MessageResponse {
+        val phone = SecurityContextHolder.getContext().authentication?.name
+        service.deleteAddress(phone.toString(), id)
+        return MessageResponse("Đã xóa địa chỉ")
+    }
 
     @PatchMapping("/{id}/default")
     fun setDefault(@PathVariable id: Long) : MessageResponse {

@@ -9,12 +9,26 @@ import java.time.LocalDateTime
 
 interface StatisticsOverviewRepository : Repository<OrderItem, Long> {
 
+    @Query("""
+        SELECT DISTINCT oi FROM OrderItem oi JOIN FETCH oi.product p JOIN FETCH oi.order o
+        JOIN FETCH o.user LEFT JOIN FETCH p.imageUrls
+        WHERE p.farmer = :seller AND o.status IN ('COMPLETED', 'CANCELLED')
+          AND o.orderDate >= :start AND o.orderDate < :end
+    """)
+    fun findSellerFinanceItems(
+        @Param("seller") seller: User,
+        @Param("start") start: LocalDateTime,
+        @Param("end") end: LocalDateTime
+    ): List<OrderItem>
+
     @Query(
         """
-        SELECT oi
+        SELECT DISTINCT oi
         FROM OrderItem oi
         JOIN FETCH oi.product p
         JOIN FETCH oi.order o
+        JOIN FETCH o.user
+        LEFT JOIN FETCH p.imageUrls
         WHERE p.farmer = :seller
           AND o.status = 'COMPLETED'
           AND o.orderDate >= :start
@@ -29,10 +43,13 @@ interface StatisticsOverviewRepository : Repository<OrderItem, Long> {
 
     @Query(
         """
-        SELECT oi
+        SELECT DISTINCT oi
         FROM OrderItem oi
-        JOIN FETCH oi.product
+        JOIN FETCH oi.product p
         JOIN FETCH oi.order o
+        JOIN FETCH o.user
+        LEFT JOIN FETCH p.imageUrls
+        JOIN FETCH p.farmer
         WHERE o.user = :buyer
           AND o.status = 'COMPLETED'
           AND o.orderDate >= :start
