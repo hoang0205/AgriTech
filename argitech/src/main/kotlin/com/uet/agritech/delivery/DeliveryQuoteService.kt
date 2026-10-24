@@ -74,78 +74,9 @@ class DeliveryQuoteService(
             "Giỏ hàng đã thay đổi hoặc không hợp lệ. Vui lòng tải lại."
         }
 
-        val receiverConfigured =
-            address.addressDetail.isNotBlank() &&
-                    validCoordinates(address.latitude, address.longitude)
-
-        val quotes = cartItems
-            .groupBy { requireNotNull(it.product.farmer.id) }
-            .map { (sellerId, items) ->
-                val seller = items.first().product.farmer
-                val cartItemIds = items.map { requireNotNull(it.id) }
-                val pickupArea = pickupAreaOf(seller.pickupAddress)
-
-                if (!receiverConfigured) {
-                    return@map SellerDeliveryQuote(
-                        sellerId = sellerId,
-                        sellerName = seller.fullName,
-                        pickupArea = pickupArea,
-                        cartItemIds = cartItemIds,
-                        status = DeliveryStatus.RECEIVER_ADDRESS_REQUIRED,
-                        message = "Vui lòng cập nhật địa chỉ nhận hàng và chọn vị trí trên bản đồ."
-                    )
-                }
-
-                val sellerConfigured =
-                    !seller.pickupAddress.isNullOrBlank() &&
-                            validCoordinates(
-                                seller.pickupLatitude,
-                                seller.pickupLongitude
-                            )
-
-                if (!sellerConfigured) {
-                    return@map SellerDeliveryQuote(
-                        sellerId = sellerId,
-                        sellerName = seller.fullName,
-                        pickupArea = pickupArea,
-                        cartItemIds = cartItemIds,
-                        status = DeliveryStatus.SELLER_ADDRESS_REQUIRED,
-                        message = "Người bán chưa cập nhật đầy đủ địa điểm lấy hàng."
-                    )
-                }
-
-                val distance = distanceKm(
-                    fromLatitude = requireNotNull(seller.pickupLatitude),
-                    fromLongitude = requireNotNull(seller.pickupLongitude),
-                    toLatitude = requireNotNull(address.latitude),
-                    toLongitude = requireNotNull(address.longitude)
-                )
-
-                val fee = feeForDistance(distance)
-
-                if (fee == null) {
-                    SellerDeliveryQuote(
-                        sellerId = sellerId,
-                        sellerName = seller.fullName,
-                        pickupArea = pickupArea,
-                        cartItemIds = cartItemIds,
-                        status = DeliveryStatus.OUT_OF_RANGE,
-                        message = "Ngoài phạm vi giao hàng 30 km của người bán.",
-                        distanceKm = distance
-                    )
-                } else {
-                    SellerDeliveryQuote(
-                        sellerId = sellerId,
-                        sellerName = seller.fullName,
-                        pickupArea = pickupArea,
-                        cartItemIds = cartItemIds,
-                        status = DeliveryStatus.AVAILABLE,
-                        message = "Trong phạm vi giao hàng.",
-                        distanceKm = distance,
-                        shippingFee = fee
-                    )
-                }
-            }
+        val quotes = cartItems.groupBy { requireNotNull(it.product.farmer.id) }
+            .map { (_, items) -> quoteSeller(address, items.first().product.farmer,
+                items.map { requireNotNull(it.id) }) }
 
         val allDeliverable = quotes.all {
             it.status == DeliveryStatus.AVAILABLE
@@ -162,6 +93,75 @@ class DeliveryQuoteService(
                 null
             }
         )
+    }
+
+    fun quoteSeller(address: com.uet.agritech.user.ShippingAddress,
+                    seller: com.uet.agritech.user.User,
+                    cartItemIds: List<Long> = emptyList()): SellerDeliveryQuote {
+        val sellerId = requireNotNull(seller.id)
+        val pickupArea = pickupAreaOf(seller.pickupAddress)
+        val receiverConfigured = address.addressDetail.isNotBlank() &&
+            validCoordinates(address.latitude, address.longitude)
+        if (!receiverConfigured) {
+            return SellerDeliveryQuote(
+                sellerId = sellerId,
+                sellerName = seller.fullName,
+                pickupArea = pickupArea,
+                cartItemIds = cartItemIds,
+                status = DeliveryStatus.RECEIVER_ADDRESS_REQUIRED,
+                message = "Vui lòng cập nhật địa chỉ nhận hàng và chọn vị trí trên bản đồ."
+            )
+        }
+
+        val sellerConfigured =
+            !seller.pickupAddress.isNullOrBlank() &&
+                    validCoordinates(
+                        seller.pickupLatitude,
+                        seller.pickupLongitude
+                    )
+
+        if (!sellerConfigured) {
+            return SellerDeliveryQuote(
+                sellerId = sellerId,
+                sellerName = seller.fullName,
+                pickupArea = pickupArea,
+                cartItemIds = cartItemIds,
+                status = DeliveryStatus.SELLER_ADDRESS_REQUIRED,
+                message = "Người bán chưa cập nhật đầy đủ địa điểm lấy hàng."
+            )
+        }
+
+        val distance = distanceKm(
+            fromLatitude = requireNotNull(seller.pickupLatitude),
+            fromLongitude = requireNotNull(seller.pickupLongitude),
+            toLatitude = requireNotNull(address.latitude),
+            toLongitude = requireNotNull(address.longitude)
+        )
+
+        val fee = feeForDistance(distance)
+
+        return if (fee == null) {
+            SellerDeliveryQuote(
+                sellerId = sellerId,
+                sellerName = seller.fullName,
+                pickupArea = pickupArea,
+                cartItemIds = cartItemIds,
+                status = DeliveryStatus.OUT_OF_RANGE,
+                message = "Ngoài phạm vi giao hàng 30 km của người bán.",
+                distanceKm = distance
+            )
+        } else {
+            SellerDeliveryQuote(
+                sellerId = sellerId,
+                sellerName = seller.fullName,
+                pickupArea = pickupArea,
+                cartItemIds = cartItemIds,
+                status = DeliveryStatus.AVAILABLE,
+                message = "Trong phạm vi giao hàng.",
+                distanceKm = distance,
+                shippingFee = fee
+            )
+        }
     }
 
     private fun pickupAreaOf(address: String?): String? {

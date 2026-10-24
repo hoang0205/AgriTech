@@ -25,6 +25,10 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 
+data class NegotiatedPurchase(val product: Product, val quantity: Double, val unitPrice: Double,
+    val expectedUnit: String = product.unit, val sellerId: String? = product.farmer.id)
+private data class CheckoutLine(val product: Product, val quantity: Double)
+
 @Service
 class OrderService(
     private val orderRepository: OrderRepository,
@@ -44,7 +48,16 @@ class OrderService(
     fun checkout(
         request: CheckoutRequest,
         userPhone: String
-    ): List<Order> {
+    ): List<Order> = checkoutInternal(request, userPhone, null)
+
+    @Transactional
+    fun checkoutNegotiated(request: CheckoutRequest, userPhone: String, purchase: NegotiatedPurchase): Order {
+        require(request.paymentMethod == "COD") { "Đơn trả giá chỉ hỗ trợ COD." }
+        require(purchase.unitPrice.isFinite() && purchase.unitPrice > 0 && purchase.quantity.isFinite() && purchase.quantity > 0)
+        return checkoutInternal(request, userPhone, purchase).single()
+    }
+
+    private fun checkoutInternal(request: CheckoutRequest, userPhone: String, purchase: NegotiatedPurchase?): List<Order> {
         val user = userRepository.findByPhoneNumber(userPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
 
@@ -94,20 +107,20 @@ class OrderService(
             "Thông tin địa chỉ nhận hàng chưa đầy đủ."
         }
 
-        if (request.selectedCartItemIds.isEmpty()) {
+        if (purchase == null && request.selectedCartItemIds.isEmpty()) {
             throw RuntimeException("Bạn chưa chọn món nào để thanh toán!")
         }
 
         val selectedIds = request.selectedCartItemIds.distinct().sorted()
-        val cartItems = cartItemRepository.findAllForCheckout(selectedIds)
+        val sourceCartItems = if (purchase == null) cartItemRepository.findAllForCheckout(selectedIds) else emptyList()
 
-        if (cartItems.isEmpty() || cartItems.size != selectedIds.size) {
+        if (purchase == null && (sourceCartItems.isEmpty() || sourceCartItems.size != selectedIds.size)) {
             throw RuntimeException(
                 "Giỏ hàng đã thay đổi. Vui lòng tải lại trước khi đặt hàng!"
             )
         }
 
-        for (item in cartItems) {
+        for (item in sourceCartItems) {
             entityManager.refresh(item, LockModeType.PESSIMISTIC_WRITE)
 
             if (item.user.phoneNumber != userPhone) {
@@ -119,6 +132,9 @@ class OrderService(
             }
         }
 
+        val cartItems = purchase?.let { listOf(CheckoutLine(it.product, it.quantity)) }
+            ?: sourceCartItems.map { CheckoutLine(it.product, it.quantity) }
+
         val products = lockProducts(
             cartItems.map { requireNotNull(it.product.id) }
         )
@@ -129,6 +145,9 @@ class OrderService(
 
         for ((productId, quantity) in quantitiesByProduct) {
             val product = products.getValue(productId)
+            require(purchase == null || (product.unit == purchase.expectedUnit && product.farmer.id == purchase.sellerId)) {
+                "Sản phẩm đã thay đổi. Vui lòng gửi đề nghị mới."
+            }
 
             require(!product.hidden) {
                 "Sản phẩm đang bị ẩn, không thể mua: ${product.name}"
@@ -156,7 +175,11 @@ class OrderService(
                 )
             }
 
-        val deliveryQuote = deliveryQuoteService.quote(
+        val deliveryQuote = if (purchase != null) {
+            val quote = deliveryQuoteService.quoteSeller(address, products.getValue(requireNotNull(purchase.product.id)).farmer)
+            com.uet.agritech.delivery.DeliveryQuoteResponse(addressId, DeliveryQuoteService.MAX_DISTANCE_KM,
+                listOf(quote), quote.status == DeliveryStatus.AVAILABLE, quote.shippingFee)
+        } else deliveryQuoteService.quote(
             phone = userPhone,
             request = DeliveryQuoteRequest(
                 addressId = addressId,
@@ -228,7 +251,7 @@ class OrderService(
             ).farmer
 
             val sellerTotal = sellerCartItems.sumOf {
-                products.getValue(requireNotNull(it.product.id)).price * it.quantity
+                (purchase?.unitPrice ?: products.getValue(requireNotNull(it.product.id)).price) * it.quantity
             }
 
             val sellerDelivery = deliveryBySeller[
@@ -280,7 +303,7 @@ class OrderService(
                     order = savedOrder,
                     product = product,
                     quantity = cartItem.quantity,
-                    price = product.price,
+                    price = purchase?.unitPrice ?: product.price,
                     costPrice = product.costPrice
                 )
             }
@@ -312,7 +335,7 @@ class OrderService(
             )
         }
 
-        cartItemRepository.deleteAll(cartItems)
+        if (purchase == null) cartItemRepository.deleteAll(sourceCartItems)
 
         return createdOrders
     }

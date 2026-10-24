@@ -211,6 +211,41 @@ class OrderServiceTest {
     }
 
     @Test
+    fun `negotiated checkout freezes agreed price and leaves cart untouched`() {
+        every { delivery.quoteSeller(any(), any(), any()) } returns SellerDeliveryQuote(
+            sellerId = "seller-1", sellerName = "Farmer Test", cartItemIds = emptyList(),
+            status = DeliveryStatus.AVAILABLE, message = "OK", shippingFee = 15000)
+        val saved = slot<List<OrderItem>>()
+        every { orderItemRepository.saveAll(capture(saved)) } answers { firstArg<List<OrderItem>>() }
+        product.price = 30000.0
+        val result = service.checkoutNegotiated(
+            CheckoutRequest(selectedCartItemIds = emptyList(), addressId = 1L, expectedShippingFee = 15000),
+            buyer.phoneNumber, NegotiatedPurchase(product, 2.5, 18000.0))
+        assertEquals(60000.0, result.totalAmount)
+        assertEquals("COD", result.paymentMethod)
+        assertEquals("PENDING", result.status)
+        assertEquals(18000.0, saved.captured.single().price)
+        assertEquals(7.5, product.quantity)
+        assertEquals(30000.0, product.price)
+        verify(exactly = 0) { cartRepository.findAllForCheckout(any()) }
+        verify(exactly = 0) { cartRepository.deleteAll(any<List<CartItem>>()) }
+    }
+
+    @Test
+    fun `negotiated checkout rejects changed shipping fee before stock writes`() {
+        every { delivery.quoteSeller(any(), any(), any()) } returns SellerDeliveryQuote(
+            sellerId = "seller-1", sellerName = "Farmer Test", cartItemIds = emptyList(),
+            status = DeliveryStatus.AVAILABLE, message = "OK", shippingFee = 25000)
+        assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+            service.checkoutNegotiated(
+                CheckoutRequest(selectedCartItemIds = emptyList(), addressId = 1L, expectedShippingFee = 15000),
+                buyer.phoneNumber, NegotiatedPurchase(product, 2.5, 18000.0))
+        }
+        assertEquals(10.0, product.quantity)
+        verify(exactly = 0) { orderRepository.save(any()) }
+    }
+
+    @Test
     fun `checkout freezes cost per order and only new orders use edited product cost`() {
         every { cartRepository.findAllForCheckout(listOf(1L)) } returns listOf(cartItem(id = 1L, quantity = 1.0))
         val captured = mutableListOf<List<OrderItem>>()

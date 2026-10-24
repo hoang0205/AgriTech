@@ -6,9 +6,21 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.server.ResponseStatusException
+import org.springframework.dao.DataAccessException
+import jakarta.persistence.PersistenceException
+import org.slf4j.LoggerFactory
 
 @RestControllerAdvice
 class GlobalExceptionHandler {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    @ExceptionHandler(DataAccessException::class, PersistenceException::class)
+    fun handleDatabaseException(ex: Exception): ResponseEntity<ErrorResponse> {
+        logger.error("Database operation failed", ex)
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+            ErrorResponse(status = 500, message = "Hệ thống chưa xử lý được yêu cầu. Vui lòng thử lại sau.")
+        )
+    }
 
     @ExceptionHandler(RuntimeException::class)
     fun handleRuntimeException(ex: RuntimeException): ResponseEntity<ErrorResponse> {
