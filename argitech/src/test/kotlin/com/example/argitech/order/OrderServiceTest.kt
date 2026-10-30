@@ -495,10 +495,14 @@ class OrderServiceTest {
             OrderStatus.COMPLETED,
             seller.phoneNumber
         )
+        assertEquals("SHIPPING", order.status)
+        kotlin.test.assertNotNull(order.sellerDeliveredAt)
+        assertNull(order.buyerReceivedAt)
+        service.confirmReceived(100L, buyer.phoneNumber)
         assertEquals("COMPLETED", order.status)
         assertEquals(10.0, product.quantity)
 
-        verify(exactly = 3) {
+        verify(exactly = 4) {
             orderRepository.save(order)
         }
         verify(exactly = 0) {
@@ -640,6 +644,8 @@ class OrderServiceTest {
     fun `seller can complete a reference quote order or an explicitly opted in staging simulation`() {
         for (simulation in listOf(false, true)) {
             order.status = "CONFIRMED"
+            order.sellerDeliveredAt = null
+            order.buyerReceivedAt = null
             order.deliveryMethod = DeliveryMethod.SELF
             order.ghnStatus = if (simulation) "simulation" else "quote_only"
             order.ghnEnvironment = "staging"
@@ -647,6 +653,8 @@ class OrderServiceTest {
             order.ghnShippingFee = 64900
             service.updateStatus(100L, OrderStatus.SHIPPING, seller.phoneNumber)
             service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+            assertEquals("SHIPPING", order.status)
+            service.confirmReceived(100L, buyer.phoneNumber)
             assertEquals("COMPLETED", order.status)
             assertEquals(64900L, order.ghnShippingFee)
             assertNull(order.actualShippingCost)
@@ -699,6 +707,163 @@ class OrderServiceTest {
         assertEquals("0900000099", response.buyerPhone)
         assertEquals("Saved delivery address", response.shippingAddress)
         assertEquals(buyer.fullName, response.buyerName)
+    }
+
+    @Test
+    fun `buyer can confirm receipt once without changing inventory`() {
+        order.status = "SHIPPING"
+        order.sellerDeliveredAt = java.time.LocalDateTime.now()
+        val stock = product.quantity
+        service.confirmReceived(100L, buyer.phoneNumber)
+        service.confirmReceived(100L, buyer.phoneNumber)
+        assertEquals("COMPLETED", order.status)
+        kotlin.test.assertNotNull(order.buyerReceivedAt)
+        kotlin.test.assertNotNull(order.sellerDeliveredAt)
+        assertEquals(stock, product.quantity)
+        verify(exactly = 1) { orderRepository.save(order) }
+        verify(exactly = 0) { productRepository.save(any<Product>()) }
+    }
+
+    @Test
+    fun `seller and unrelated buyer cannot confirm receipt even for completed orders`() {
+        for (status in listOf("SHIPPING", "COMPLETED")) {
+            order.status = status
+            for (phone in listOf(seller.phoneNumber, "0900000009")) {
+                val error = assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+                    service.confirmReceived(100L, phone)
+                }
+                assertEquals(org.springframework.http.HttpStatus.FORBIDDEN, error.statusCode)
+            }
+            assertEquals(status, order.status)
+        }
+        verify(exactly = 0) { orderRepository.save(any<Order>()) }
+    }
+
+    @Test
+    fun `buyer cannot confirm receipt before shipping or after cancellation`() {
+        for (status in listOf("UNPAID", "PENDING", "CONFIRMED", "CANCELLED")) {
+            order.status = status
+            val error = assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+                service.confirmReceived(100L, buyer.phoneNumber)
+            }
+            assertEquals(org.springframework.http.HttpStatus.CONFLICT, error.statusCode)
+            assertEquals(status, order.status)
+        }
+        verify(exactly = 0) { orderRepository.save(any<Order>()) }
+    }
+
+    @Test
+    fun `buyer receipt is accepted for an active carrier shipment without rewriting tracking`() {
+        order.status = "SHIPPING"
+        order.ghnRequestJson = "{}"
+        order.ghnStatus = "delivering"
+        order.ghnOrderCode = "GHN123"
+        service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+        assertEquals("SHIPPING", order.status)
+        service.confirmReceived(100L, buyer.phoneNumber)
+        assertEquals("COMPLETED", order.status)
+        assertEquals("delivering", order.ghnStatus)
+        assertEquals("GHN123", order.ghnOrderCode)
+    }
+
+    @Test
+    fun `confirming a missing order returns not found`() {
+        every { orderRepository.findForStatusUpdate(999L) } returns Optional.empty()
+        val error = assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+            service.confirmReceived(999L, buyer.phoneNumber)
+        }
+        assertEquals(org.springframework.http.HttpStatus.NOT_FOUND, error.statusCode)
+    }
+
+    @Test
+    fun `seller confirmation is idempotent and only both confirmations complete the order`() {
+        order.status = "SHIPPING"
+        service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+        val deliveredAt = order.sellerDeliveredAt
+        service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+        assertEquals("SHIPPING", order.status)
+        assertEquals(deliveredAt, order.sellerDeliveredAt)
+        service.confirmReceived(100L, buyer.phoneNumber)
+        service.confirmReceived(100L, buyer.phoneNumber)
+        service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber)
+        assertEquals("COMPLETED", order.status)
+        kotlin.test.assertNotNull(order.buyerReceivedAt)
+        verify(exactly = 2) { orderRepository.save(order) }
+    }
+
+    @Test
+    fun `seller cannot cancel after buyer has confirmed receipt`() {
+        order.status = "SHIPPING"
+        order.sellerDeliveredAt = java.time.LocalDateTime.now()
+        service.confirmReceived(100L, buyer.phoneNumber)
+        assertFailsWith<IllegalArgumentException> {
+            service.updateStatus(100L, OrderStatus.CANCELLED, seller.phoneNumber)
+        }
+        assertEquals("COMPLETED", order.status)
+        verify(exactly = 0) { productRepository.save(any<Product>()) }
+    }
+
+    @Test
+    fun `seller cannot transition an unpaid or unknown order to any requested status`() {
+        for (current in listOf("UNPAID", "BROKEN_STATUS", "", "pending")) {
+            order.status = current
+            for (target in OrderStatus.entries) {
+                val error = assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+                    service.updateStatus(100L, target, seller.phoneNumber)
+                }
+                assertEquals(org.springframework.http.HttpStatus.CONFLICT, error.statusCode)
+                assertEquals(current, order.status)
+            }
+        }
+        verifyNoCheckoutWrites()
+    }
+
+    @Test
+    fun `VNPay order cannot be fulfilled without verified transaction even if status was changed`() {
+        val online = Order(id = 100L, user = buyer, totalAmount = 40000.0,
+            shippingAddress = "Address", phoneNumber = buyer.phoneNumber, paymentMethod = "VNPAY",
+            deliveryMethod = DeliveryMethod.SELF)
+        every { orderRepository.findForStatusUpdate(100L) } returns Optional.of(online)
+        every { orderItemRepository.findAllByOrder(online) } returns listOf(
+            OrderItem(order = online, product = product, quantity = 2.0, price = 20000.0))
+        for (current in listOf("PENDING", "CONFIRMED", "SHIPPING")) {
+            online.status = current
+            for (target in listOf(OrderStatus.CONFIRMED, OrderStatus.SHIPPING, OrderStatus.COMPLETED)) {
+                assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+                    service.updateStatus(100L, target, seller.phoneNumber)
+                }
+                assertEquals(current, online.status)
+            }
+            assertFailsWith<org.springframework.web.server.ResponseStatusException> {
+                service.confirmReceived(100L, buyer.phoneNumber)
+            }
+        }
+        verifyNoCheckoutWrites()
+        online.status = "PENDING"
+        online.vnpayTransactionNo = "verified-transaction"
+        service.updateStatus(100L, OrderStatus.CONFIRMED, seller.phoneNumber)
+        assertEquals("CONFIRMED", online.status)
+    }
+
+    @Test
+    fun `buyer may still cancel unpaid order and restore stock`() {
+        order.status = "UNPAID"
+        service.cancelOrderByBuyer(100L, buyer.phoneNumber)
+        assertEquals("CANCELLED", order.status)
+        assertEquals(12.0, product.quantity)
+    }
+
+    @Test
+    fun `buyer cannot confirm before seller reports delivery and complaint pauses confirmations`() {
+        order.status = "SHIPPING"
+        assertFailsWith<org.springframework.web.server.ResponseStatusException> { service.confirmReceived(100L, buyer.phoneNumber) }
+        assertNull(order.buyerReceivedAt)
+        order.sellerDeliveredAt = java.time.LocalDateTime.now()
+        order.complaintOpen = true
+        assertFailsWith<org.springframework.web.server.ResponseStatusException> { service.confirmReceived(100L, buyer.phoneNumber) }
+        assertFailsWith<org.springframework.web.server.ResponseStatusException> { service.updateStatus(100L, OrderStatus.COMPLETED, seller.phoneNumber) }
+        assertEquals("SHIPPING", order.status)
+        verify(exactly = 0) { orderRepository.save(any<Order>()) }
     }
 
     private fun verifyNoCheckoutWrites() {

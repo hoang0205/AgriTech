@@ -27,6 +27,14 @@ class DeliveryManagementServiceTest {
     }
 
     @Test
+    fun `unpaid order cannot choose delivery or write changes`() {
+        order.status = "UNPAID"
+        assertFailsWith<ResponseStatusException> { service.choose(1, "0900000002", DeliveryMethod.SELF) }
+        assertNull(order.deliveryMethod)
+        verify(exactly = 0) { orders.save(any()) }
+    }
+
+    @Test
     fun `seller chooses self delivery and explicitly records zero or unknown cost`() {
         service.choose(1, "0900000002", DeliveryMethod.SELF)
         assertEquals(DeliveryMethod.SELF, order.deliveryMethod)

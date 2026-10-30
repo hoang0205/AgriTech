@@ -15,8 +15,19 @@ import org.springframework.web.bind.annotation.*
 class OrderController(
     private val orderService: OrderService,
     private val orderRepository: OrderRepository,
-    private val vnpayService: VnpayService
+    private val vnpayService: VnpayService,
+    private val orderDetailService: OrderDetailService
 ) {
+
+    @GetMapping("/{orderId}")
+    fun getDetail(@PathVariable orderId: Long, principal: java.security.Principal): OrderDetailResponse =
+        orderDetailService.get(orderId, principal.name)
+
+    @PostMapping("/{orderId}/confirm-received")
+    fun confirmReceived(@PathVariable orderId: Long, principal: java.security.Principal): ResponseEntity<OrderMessageResponse> {
+        orderService.confirmReceived(orderId, principal.name)
+        return ResponseEntity.ok(OrderMessageResponse("Đã xác nhận nhận hàng thành công!"))
+    }
 
     @PostMapping("/checkout")
     fun checkout(

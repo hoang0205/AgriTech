@@ -27,7 +27,10 @@ data class FarmerOrderResponse(
     val ghnPendingCreation: Boolean = false,
     val deliveryMethod: String? = null,
     val actualShippingCost: Long? = null,
-    val receiverName: String? = null
+    val receiverName: String? = null,
+    val sellerDeliveredAt: String? = null,
+    val buyerReceivedAt: String? = null,
+    val complaintOpen: Boolean = false
 )
 
 data class FarmerOrderItemDTO(
@@ -43,6 +46,7 @@ data class UpdateOrderStatusRequest(
 )
 
 enum class OrderStatus {
+    UNPAID,
     PENDING,
     CONFIRMED,
     SHIPPING,
@@ -69,7 +73,10 @@ data class BuyerOrderResponse(
     val ghnStatus: String? = null,
     val ghnShippingFee: Long? = null,
     val ghnPendingCreation: Boolean = false,
-    val deliveryMethod: String? = null
+    val deliveryMethod: String? = null,
+    val sellerDeliveredAt: String? = null,
+    val buyerReceivedAt: String? = null,
+    val complaintOpen: Boolean = false
 )
 
 data class BuyerOrderItemDTO(

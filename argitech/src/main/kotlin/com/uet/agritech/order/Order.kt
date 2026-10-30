@@ -72,7 +72,15 @@ class Order(
     @Enumerated(EnumType.STRING)
     var deliveryMethod: DeliveryMethod? = null,
     var actualShippingCost: Long? = null,
-    var shippingCostUpdatedAt: LocalDateTime? = null
+    var shippingCostUpdatedAt: LocalDateTime? = null,
+    var sellerDeliveredAt: LocalDateTime? = null,
+    var buyerReceivedAt: LocalDateTime? = null,
+    var autoCompleteAt: LocalDateTime? = null,
+    var completedAt: LocalDateTime? = null,
+    var completionMethod: String? = null,
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    var complaintOpen: Boolean = false,
+    var complaintId: Long? = null
 )
 
 enum class DeliveryMethod { SELF, GHN }
@@ -81,3 +89,21 @@ fun Order.isGhnSimulation(): Boolean = deliveryMethod == DeliveryMethod.SELF &&
     ghnEnvironment == "staging" && ghnStatus == "simulation"
 
 fun Order.hasActiveGhnShipment(): Boolean = ghnRequestJson != null && ghnStatus != "cancel" && !isGhnSimulation()
+
+fun Order.isAwaitingOnlinePayment(): Boolean = status == "UNPAID" ||
+    (paymentMethod == "VNPAY" && vnpayTransactionNo.isNullOrBlank())
+
+fun Order.requirePaymentForFulfillment() {
+    if (isAwaitingOnlinePayment()) {
+        throw org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.CONFLICT,
+            "Đơn hàng chưa được xác nhận thanh toán. Vui lòng chờ người mua thanh toán thành công.")
+    }
+}
+
+fun Order.completionDeadline(): LocalDateTime? = autoCompleteAt ?: sellerDeliveredAt?.plusHours(48)
+
+fun Order.markCompleted(method: String, at: LocalDateTime = LocalDateTime.now()) {
+    status = "COMPLETED"
+    completedAt = at
+    completionMethod = method
+}

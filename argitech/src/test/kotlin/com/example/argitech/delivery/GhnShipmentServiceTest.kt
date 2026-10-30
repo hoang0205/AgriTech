@@ -46,6 +46,18 @@ class GhnShipmentServiceTest {
     }
 
     @Test
+    fun `unpaid order cannot quote create or retry a shipment`() {
+        order.status = "UNPAID"
+        assertFailsWith<ResponseStatusException> { service.reference(1, "0900000002", parcel) }
+        assertFailsWith<ResponseStatusException> { service.create(1, "0900000002", parcel) }
+        assertFailsWith<ResponseStatusException> { service.retry(1, "0900000002") }
+        assertNull(order.ghnOrderCode)
+        assertNull(order.ghnRequestJson)
+        verify { client wasNot Called }
+        verify(exactly = 0) { orders.save(any()) }
+    }
+
+    @Test
     fun `COD includes customer shipping once and shop pays carrier fee`() {
         val body = slot<JsonNode>()
         every { client.post("/v2/shipping-order/create", 123, capture(body)) } returns json("""{"order_code":"TEST123","total_fee":30000}""")
@@ -128,8 +140,22 @@ class GhnShipmentServiceTest {
             json("""{"order_code":"TEST123","status":"transporting"}""")
         service.refresh(1, "0900000001")
         service.refresh(1, "0900000001")
-        assertEquals("COMPLETED", order.status)
+        assertEquals("SHIPPING", order.status)
+        assertNull(order.sellerDeliveredAt)
+        assertNull(order.buyerReceivedAt)
         assertEquals("delivered", order.ghnStatus)
+    }
+
+    @Test
+    fun `carrier refresh cannot reopen an order completed by buyer receipt`() {
+        service.create(1, "0900000002", parcel)
+        order.status = "COMPLETED"
+        order.ghnStatus = "delivering"
+        every { client.get("/v2/shipping-order/detail?order_code=TEST123", 123) } returns
+            json("""{"order_code":"TEST123","status":"transporting"}""")
+        service.refresh(1, "0900000001")
+        assertEquals("COMPLETED", order.status)
+        assertEquals("transporting", order.ghnStatus)
     }
 
     @Test

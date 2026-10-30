@@ -11,6 +11,13 @@ import org.springframework.stereotype.Repository
 
 @Repository
 interface OrderRepository : JpaRepository<Order, Long> {
+    @Query("""select o.id from Order o where o.status = 'SHIPPING' and o.complaintOpen = false
+        and (o.paymentMethod is null or o.paymentMethod <> 'VNPAY' or o.vnpayTransactionNo is not null)
+        and o.sellerDeliveredAt is not null and
+        (o.autoCompleteAt <= :now or (o.autoCompleteAt is null and o.sellerDeliveredAt <= :cutoff))
+        order by o.id""")
+    fun findDueCompletionIds(@Param("now") now: java.time.LocalDateTime,
+        @Param("cutoff") cutoff: java.time.LocalDateTime, pageable: org.springframework.data.domain.Pageable): List<Long>
     fun findAllByUserOrderByOrderDateDesc(user: User): List<Order>
 
     fun findAllByUserOrderByIdDesc(user: User): List<Order>

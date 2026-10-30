@@ -91,7 +91,7 @@ class NotificationInboxService(private val inbox: NotificationInboxRepository, p
                 when {
                     item.type == "BARGAIN" -> "bargains"
                     item.type == "REPORT_STATUS" -> "my_reports"
-                    item.status == "NEW_ORDER_SELLER" -> "seller_orders"
+                    item.status in setOf("NEW_ORDER_SELLER", "RECEIVED_BY_BUYER") -> "seller_orders"
                     else -> "buyer_orders"
                 }, item.createdAt.toString(), item.readAt != null, item.type, item.reportId)
         }, result.hasNext(), inbox.countByRecipientIdAndReadAtIsNull(userId))

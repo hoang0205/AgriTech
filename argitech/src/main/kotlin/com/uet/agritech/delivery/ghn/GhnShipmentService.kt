@@ -8,6 +8,8 @@ import com.uet.agritech.order.OrderItem
 import com.uet.agritech.order.OrderItemRepository
 import com.uet.agritech.order.OrderRepository
 import com.uet.agritech.order.isGhnSimulation
+import com.uet.agritech.order.isAwaitingOnlinePayment
+import com.uet.agritech.order.requirePaymentForFulfillment
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.transaction.PlatformTransactionManager
@@ -111,6 +113,7 @@ class GhnShipmentService(
         // intent was committed in create(), independently of this network call.
         val outcome = tx.execute {
             val order = owned(id, phone)
+            order.requirePaymentForFulfillment()
             require(!order.isGhnSimulation()) { "Đơn thử nghiệm đã chuyển sang tự cập nhật giao hàng." }
             checkEnvironment(order)
             val requestJson = requireNotNull(order.ghnRequestJson) { "Chưa có yêu cầu tạo vận đơn." }
@@ -166,6 +169,7 @@ class GhnShipmentService(
     }!!
 
     private fun attach(order: Order, data: JsonNode, fromLookup: Boolean = false) {
+        order.requirePaymentForFulfillment()
         val code = data.path("order_code").asText()
         if (!code.matches(Regex("[A-Za-z0-9_-]{1,80}"))) throw ResponseStatusException(
             HttpStatus.BAD_GATEWAY, "GHN chưa trả mã vận đơn hợp lệ. Hãy kiểm tra lại yêu cầu.")
@@ -174,8 +178,10 @@ class GhnShipmentService(
         order.deliveryMethod = DeliveryMethod.GHN
         order.ghnOrderCode = code
         order.ghnStatus = status
-        if (status == "delivered") order.status = "COMPLETED"
-        else if (status in SHIPPING_STATES) order.status = "SHIPPING"
+        if (order.status !in setOf("COMPLETED", "CANCELLED")) {
+            if (status == "delivered") order.status = "SHIPPING"
+            else if (status in SHIPPING_STATES) order.status = "SHIPPING"
+        }
         if (data.hasNonNull("total_fee")) order.ghnShippingFee = data.path("total_fee").asLong()
         order.ghnExpectedDeliveryTime = data.get(if (fromLookup) "leadtime" else "expected_delivery_time")
             ?.takeUnless { it.isNull }?.asText()
@@ -194,8 +200,10 @@ class GhnShipmentService(
         // Do not regress terminal states or restore stock for a return in transit.
         if (order.ghnStatus !in setOf("delivered", "cancel", "returned")) {
             order.ghnStatus = status
-            if (status == "delivered") order.status = "COMPLETED"
-            else if (status in SHIPPING_STATES) order.status = "SHIPPING"
+            if (order.status !in setOf("COMPLETED", "CANCELLED") && !order.isAwaitingOnlinePayment()) {
+                if (status == "delivered") order.status = "SHIPPING"
+                else if (status in SHIPPING_STATES) order.status = "SHIPPING"
+            }
         }
         order.ghnExpectedDeliveryTime = data.get("leadtime")?.takeUnless { it.isNull }?.asText()
             ?: order.ghnExpectedDeliveryTime
@@ -276,6 +284,7 @@ class GhnShipmentService(
     }
 
     private fun requireReady(order: Order, requireCod: Boolean = false) {
+        order.requirePaymentForFulfillment()
         require(order.status == "CONFIRMED") { "Cần xác nhận đơn hàng trước khi gửi GHN." }
         require(!order.receiverName.isNullOrBlank() && (!requireCod || order.paymentMethod == "COD")) {
             "Cần đầy đủ tên người nhận; vận đơn GHN cũ chỉ hỗ trợ COD."

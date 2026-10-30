@@ -112,7 +112,11 @@ class OrderService(
         }
 
         val selectedIds = request.selectedCartItemIds.distinct().sorted()
-        val sourceCartItems = if (purchase == null) cartItemRepository.findAllForCheckout(selectedIds) else emptyList()
+        val sourceCartItems = if (purchase == null) {
+            val locked = cartItemRepository.findAllForCheckout(selectedIds)
+            locked.forEach(entityManager::detach)
+            cartItemRepository.findAllForCheckout(selectedIds)
+        } else emptyList()
 
         if (purchase == null && (sourceCartItems.isEmpty() || sourceCartItems.size != selectedIds.size)) {
             throw RuntimeException(
@@ -121,8 +125,6 @@ class OrderService(
         }
 
         for (item in sourceCartItems) {
-            entityManager.refresh(item, LockModeType.PESSIMISTIC_WRITE)
-
             if (item.user.phoneNumber != userPhone) {
                 throw RuntimeException("Giỏ hàng không hợp lệ!")
             }
@@ -347,8 +349,13 @@ class OrderService(
                     RuntimeException("Sản phẩm không còn tồn tại: $productId")
                 }
 
-            entityManager.refresh(product, LockModeType.PESSIMISTIC_WRITE)
-            product
+            // With MySQL REPEATABLE READ, Hibernate refresh may issue a plain SELECT
+            // after the locking query and reload an older snapshot. Evict the cached
+            // entity and hydrate it again through a current, locking read instead.
+            entityManager.detach(product)
+            productRepository.findForStockUpdate(productId).orElseThrow {
+                RuntimeException("Sản phẩm không còn tồn tại: $productId")
+            }
         }
     }
 
@@ -383,6 +390,7 @@ class OrderService(
                 buyerPhone = order.phoneNumber,
                 buyerName = order.user.fullName,
                 receiverName = order.receiverName,
+                sellerDeliveredAt = order.sellerDeliveredAt?.toString(), buyerReceivedAt = order.buyerReceivedAt?.toString(), complaintOpen = order.complaintOpen,
                 buyerId = order.user.id!!,
                 shippingAddress = order.shippingAddress,
                 status = order.status,
@@ -437,14 +445,23 @@ class OrderService(
             )
         }
 
-        require(!order.hasActiveGhnShipment()) {
-            "Đơn đã gửi GHN. Hãy cập nhật hoặc hủy vận đơn GHN trước khi đổi trạng thái thủ công."
+        order.requirePaymentForFulfillment()
+        val currentStatus = OrderStatus.entries.firstOrNull { it.name == order.status }
+            ?: throw ResponseStatusException(HttpStatus.CONFLICT,
+                "Trạng thái đơn hàng không hợp lệ. Vui lòng liên hệ hỗ trợ.")
+        if (order.complaintOpen) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Đơn đang có khiếu nại. Vui lòng chờ admin xử lý.")
         }
 
-        val currentStatus = try {
-            OrderStatus.valueOf(order.status)
-        } catch (e: Exception) {
-            OrderStatus.PENDING
+        if (newStatus == OrderStatus.COMPLETED) {
+            recordDeliveryConfirmation(order, buyerConfirmation = false)
+            return
+        }
+        require(newStatus != OrderStatus.CANCELLED || (order.sellerDeliveredAt == null && order.buyerReceivedAt == null)) {
+            "Đơn đã có xác nhận giao hoặc nhận hàng, không thể hủy."
+        }
+        require(!order.hasActiveGhnShipment()) {
+            "Đơn đã gửi GHN. Hãy cập nhật hoặc hủy vận đơn GHN trước khi đổi trạng thái thủ công."
         }
 
         if (currentStatus == OrderStatus.COMPLETED || currentStatus == OrderStatus.CANCELLED) {
@@ -509,6 +526,61 @@ class OrderService(
         )
     }
 
+    @Transactional
+    fun confirmReceived(orderId: Long, buyerPhone: String) {
+        val order = orderRepository.findForStatusUpdate(orderId).orElseThrow {
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn hàng.")
+        }
+        entityManager.refresh(order, LockModeType.PESSIMISTIC_WRITE)
+        if (order.user.phoneNumber != buyerPhone) {
+            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ người mua của đơn hàng được xác nhận nhận hàng.")
+        }
+        recordDeliveryConfirmation(order, buyerConfirmation = true)
+    }
+
+    private fun recordDeliveryConfirmation(order: Order, buyerConfirmation: Boolean) {
+        val orderId = requireNotNull(order.id)
+        order.requirePaymentForFulfillment()
+        if (order.status == "COMPLETED") return
+        if (order.status != "SHIPPING") {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Chỉ xác nhận giao hoặc nhận hàng khi đơn đang giao.")
+        }
+        if (order.complaintOpen) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Đơn đang có khiếu nại. Vui lòng chờ admin xử lý.")
+        }
+        if (buyerConfirmation) {
+            if (order.sellerDeliveredAt == null) {
+                throw ResponseStatusException(HttpStatus.CONFLICT, "Người bán chưa xác nhận đã giao hàng.")
+            }
+            if (order.buyerReceivedAt != null) return
+            order.buyerReceivedAt = java.time.LocalDateTime.now()
+        } else {
+            if (order.sellerDeliveredAt != null) return
+            order.sellerDeliveredAt = java.time.LocalDateTime.now()
+            order.autoCompleteAt = order.sellerDeliveredAt!!.plusHours(48)
+        }
+        val completed = order.buyerReceivedAt != null && order.sellerDeliveredAt != null
+        if (completed) order.markCompleted("BUYER_CONFIRMED")
+        orderRepository.save(order)
+        val sellers = orderItemRepository.findAllByOrder(order).map { it.product.farmer }.distinctBy { it.id }
+        sellers.forEach { seller ->
+            notificationService.sendOrderStatusNotification(
+                recipient = seller, orderId = orderId, status = "RECEIVED_BY_BUYER",
+                title = if (completed) "Đơn hàng đã hoàn thành" else "Đã ghi nhận xác nhận đơn hàng",
+                body = if (completed) "Hai bên đã xác nhận giao và nhận đơn #$orderId."
+                    else if (buyerConfirmation) "Người mua đã nhận đơn #$orderId. Vui lòng xác nhận đã giao hàng."
+                    else "Bạn đã xác nhận giao đơn #$orderId. Đơn tự hoàn thành sau 48 giờ nếu người mua không phản hồi và không có khiếu nại."
+            )
+        }
+        notificationService.sendOrderStatusNotification(
+            recipient = order.user, orderId = orderId, status = order.status,
+            title = if (completed) "Đơn hàng đã hoàn thành" else "Đã ghi nhận xác nhận đơn hàng",
+            body = if (completed) "Hai bên đã xác nhận đơn #$orderId. Bạn có thể đánh giá sản phẩm ngay."
+                else if (buyerConfirmation) "Bạn đã nhận đơn #$orderId. Đang chờ người bán xác nhận đã giao."
+                else "Người bán đã giao đơn #$orderId. Vui lòng xác nhận đã nhận hoặc gửi khiếu nại trong 48 giờ."
+        )
+    }
+
     fun getMyOrders(buyerPhone: String, status: String? = null): List<BuyerOrderResponse> {
         val user = userRepository.findByPhoneNumber(buyerPhone)
             .orElseThrow { RuntimeException("User không tồn tại") }
@@ -527,6 +599,7 @@ class OrderService(
                 orderDate = order.orderDate.toString(),
                 status = order.status,
                 shippingAddress = order.shippingAddress,
+                sellerDeliveredAt = order.sellerDeliveredAt?.toString(), buyerReceivedAt = order.buyerReceivedAt?.toString(), complaintOpen = order.complaintOpen,
                 totalAmount = order.totalAmount,
                 shippingFee = order.shippingFee,
                 pickupAddress = order.pickupAddress,

@@ -24,6 +24,7 @@ class DeliveryManagementService(private val orders: OrderRepository, private val
     @Transactional
     fun choose(id: Long, phone: String, method: DeliveryMethod): DeliveryManagementView {
         val order = owned(id, phone)
+        order.requirePaymentForFulfillment()
         require(order.status == "CONFIRMED") { "Chỉ chọn hoặc đổi cách giao trước khi bàn giao hàng." }
         require(!ghnActive(order)) { "Cần hủy hoặc đối chiếu yêu cầu GHN trước khi đổi cách giao." }
         require(method != DeliveryMethod.GHN || order.ghnRequestJson == null) {
