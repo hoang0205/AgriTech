@@ -164,7 +164,10 @@ class AdminStatisticsRepository(
 
     fun getDaily(
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
+        userId: String? = null,
+        userType: String = "BUYER",
+        productId: String? = null
     ): List<AdminDailyStatistics> {
         val rows = entityManager.createQuery(
             """
@@ -172,14 +175,16 @@ class AdminStatisticsRepository(
                 YEAR(o.orderDate) AS y,
                 MONTH(o.orderDate) AS m,
                 DAY(o.orderDate) AS d,
-                COUNT(o) AS orders,
+                COUNT(DISTINCT o.id) AS orders,
                 SUM(
                     CASE WHEN o.status = 'COMPLETED'
-                    THEN o.totalAmount ELSE 0.0 END
+                    THEN i.quantity * i.price ELSE 0.0 END
                 ) AS revenue
-            FROM Order o
+            FROM OrderItem i JOIN i.order o JOIN i.product p
             WHERE o.orderDate >= :start
               AND o.orderDate < :end
+              ${if (userId != null) if (userType == "SELLER") "AND p.farmer.id = :userId" else "AND o.user.id = :userId" else ""}
+              ${if (productId != null) "AND p.id = :productId" else ""}
             GROUP BY
                 YEAR(o.orderDate),
                 MONTH(o.orderDate),
@@ -193,6 +198,10 @@ class AdminStatisticsRepository(
         )
             .setParameter("start", start)
             .setParameter("end", end)
+            .apply {
+                if (userId != null) setParameter("userId", userId)
+                if (productId != null) setParameter("productId", productId)
+            }
             .resultList
 
         return rows.map { row ->
@@ -212,14 +221,19 @@ class AdminStatisticsRepository(
 
     fun getStatuses(
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
+        userId: String? = null,
+        userType: String = "BUYER",
+        productId: String? = null
     ): List<AdminStatusStatistics> {
         val rows = entityManager.createQuery(
             """
-            SELECT o.status AS status, COUNT(o) AS count
-            FROM Order o
+            SELECT o.status AS status, COUNT(DISTINCT o.id) AS count
+            FROM OrderItem i JOIN i.order o JOIN i.product p
             WHERE o.orderDate >= :start
               AND o.orderDate < :end
+              ${if (userId != null) if (userType == "SELLER") "AND p.farmer.id = :userId" else "AND o.user.id = :userId" else ""}
+              ${if (productId != null) "AND p.id = :productId" else ""}
             GROUP BY o.status
             ORDER BY o.status
             """.trimIndent(),
@@ -227,6 +241,10 @@ class AdminStatisticsRepository(
         )
             .setParameter("start", start)
             .setParameter("end", end)
+            .apply {
+                if (userId != null) setParameter("userId", userId)
+                if (productId != null) setParameter("productId", productId)
+            }
             .resultList
 
         return rows.map { row ->
@@ -239,7 +257,10 @@ class AdminStatisticsRepository(
 
     fun getTopProducts(
         start: LocalDateTime,
-        end: LocalDateTime
+        end: LocalDateTime,
+        userId: String? = null,
+        userType: String = "BUYER",
+        productId: String? = null
     ): List<AdminTopProductStatistics> {
         val rows = entityManager.createQuery(
             """
@@ -255,6 +276,8 @@ class AdminStatisticsRepository(
             WHERE o.status = 'COMPLETED'
               AND o.orderDate >= :start
               AND o.orderDate < :end
+              ${if (userId != null) if (userType == "SELLER") "AND p.farmer.id = :userId" else "AND o.user.id = :userId" else ""}
+              ${if (productId != null) "AND p.id = :productId" else ""}
             GROUP BY p.id, p.name, p.unit
             ORDER BY SUM(i.quantity * i.price) DESC, p.id ASC
             """.trimIndent(),
@@ -262,6 +285,10 @@ class AdminStatisticsRepository(
         )
             .setParameter("start", start)
             .setParameter("end", end)
+            .apply {
+                if (userId != null) setParameter("userId", userId)
+                if (productId != null) setParameter("productId", productId)
+            }
             .setMaxResults(10)
             .resultList
 

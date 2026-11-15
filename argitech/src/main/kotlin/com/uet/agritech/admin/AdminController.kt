@@ -144,6 +144,32 @@ class AdminUserController(
         return toResponse(user)
     }
 
+    @PatchMapping("/{id}/role")
+    @Transactional
+    fun grantAdmin(@PathVariable id: String): AdminUserResponse {
+        val user = repository.findById(id).orElseThrow {
+            ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng")
+        }
+        entityManager.refresh(user, LockModeType.PESSIMISTIC_WRITE)
+        if (user.locked) {
+            throw ResponseStatusException(HttpStatus.CONFLICT, "Cần mở khóa tài khoản trước khi cấp quyền Admin")
+        }
+        if (user.role == Role.ADMIN) return toResponse(user)
+        val previousRole = user.role.name
+        user.role = Role.ADMIN
+        user.tokenVersion += 1
+        repository.saveAndFlush(user)
+        auditService.record(
+            action = AdminAuditAction.USER_GRANT_ADMIN,
+            targetType = AdminAuditTarget.USER,
+            targetId = requireNotNull(user.id),
+            targetName = user.fullName,
+            beforeState = previousRole,
+            afterState = "ADMIN"
+        )
+        return toResponse(user)
+    }
+
     private fun toResponse(user: User): AdminUserResponse {
         return AdminUserResponse(
             id = requireNotNull(user.id),
@@ -421,8 +447,16 @@ class AdminStatisticsController(
 
         @RequestParam(required = false)
         @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
-        to: LocalDate?
+        to: LocalDate?,
+        @RequestParam(required = false) userId: String? = null,
+        @RequestParam(defaultValue = "BUYER") userType: String = "BUYER",
+        @RequestParam(required = false) productId: String? = null
     ): AdminStatisticsResponse {
+        if (userType !in listOf("BUYER", "SELLER")) {
+            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Loại người dùng không hợp lệ")
+        }
+        val selectedUser = userId?.trim()?.takeIf { it.isNotEmpty() }
+        val selectedProduct = productId?.trim()?.takeIf { it.isNotEmpty() }
         val endDate = to ?: LocalDate.now(
             ZoneId.of("Asia/Ho_Chi_Minh")
         )
@@ -444,7 +478,7 @@ class AdminStatisticsController(
         val start = startDate.atStartOfDay()
         val end = endDate.plusDays(1).atStartOfDay()
 
-        val dailyMap = repository.getDaily(start, end)
+        val dailyMap = repository.getDaily(start, end, selectedUser, userType, selectedProduct)
             .associateBy { it.date }
 
         val daily = (0L..daysBetween).map { offset ->
@@ -457,7 +491,7 @@ class AdminStatisticsController(
             )
         }
 
-        val statuses = repository.getStatuses(start, end)
+        val statuses = repository.getStatuses(start, end, selectedUser, userType, selectedProduct)
 
         return AdminStatisticsResponse(
             from = startDate.toString(),
@@ -469,7 +503,7 @@ class AdminStatisticsController(
             completedRevenue = daily.sumOf { it.revenue },
             daily = daily,
             statuses = statuses,
-            topProducts = repository.getTopProducts(start, end)
+            topProducts = repository.getTopProducts(start, end, selectedUser, userType, selectedProduct)
         )
     }
 }

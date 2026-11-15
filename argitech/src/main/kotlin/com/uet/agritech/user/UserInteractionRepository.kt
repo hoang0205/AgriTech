@@ -14,6 +14,7 @@ interface UserInteractionRepository : JpaRepository<UserInteraction, Long> {
         FROM UserInteraction i
         WHERE i.user = :user
           AND i.product.quantity > 0
+          AND i.product.hidden = false
           AND i.actionType IN ('VIEW', 'ADD_TO_CART', 'PURCHASE')
         GROUP BY i.product
         ORDER BY SUM(i.weight) DESC, i.product.id ASC
@@ -68,6 +69,7 @@ interface UserInteractionRepository : JpaRepository<UserInteraction, Long> {
         FROM UserInteraction i
         WHERE i.user = :similarUser
           AND i.product.quantity > 0
+          AND i.product.hidden = false
           AND i.actionType IN ('VIEW', 'ADD_TO_CART', 'PURCHASE')
           AND NOT EXISTS (
               SELECT own.id

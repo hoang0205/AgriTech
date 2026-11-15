@@ -23,6 +23,7 @@ import java.util.Locale
 enum class AdminAuditAction {
     USER_LOCK,
     USER_UNLOCK,
+    USER_GRANT_ADMIN,
     PRODUCT_HIDE,
     PRODUCT_SHOW,
     REPORT_UPDATE
